@@ -52,7 +52,6 @@ function resolveLibPath(): string {
 }
 
 const libPath = resolveLibPath();
-console.log("libPath", libPath);
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 let lib: any;
