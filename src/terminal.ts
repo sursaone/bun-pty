@@ -35,7 +35,7 @@ function resolveLibPath(): string {
 	// Start from the current module's location (inside node_modules/bun-pty/dist)
 	const base = Bun.fileURLToPath(import.meta.url);
 	const here = base.replace(/\/dist\/.*$/, ""); // up to bun-pty/
-
+	
 	const fallbackPaths = [
 		join(here, "rust-pty", "target", "release", filename),       // node_modules/bun-pty/rust-pty/target/release
 		join(here, "..", "bun-pty", "rust-pty", "target", "release", filename), // monorepo setups
@@ -60,7 +60,7 @@ let lib: any;
 try {
 	lib = dlopen(libPath, {
 		bun_pty_spawn: {
-			args: [FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
+			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
 			returns: FFIType.i32,
 		},
 		bun_pty_write: {
@@ -104,12 +104,19 @@ export class Terminal implements IPty {
 		this._cols = opts.cols ?? DEFAULT_COLS;
 		this._rows = opts.rows ?? DEFAULT_ROWS;
 		const cwd = opts.cwd ?? process.cwd();
-
 		const cmdline = [file, ...args].join(" ");
+
+		// Format environment variables as null-terminated string
+		let envStr = "";
+		if (opts.env) {
+			const envPairs = Object.entries(opts.env).map(([k, v]) => `${k}=${v}`);
+			envStr = envPairs.join("\0") + "\0";
+		}
 
 		this.handle = lib.symbols.bun_pty_spawn(
 			Buffer.from(`${cmdline}\0`, "utf8"),
 			Buffer.from(`${cwd}\0`, "utf8"),
+			Buffer.from(`${envStr}\0`, "utf8"),
 			this._cols,
 			this._rows,
 		);
