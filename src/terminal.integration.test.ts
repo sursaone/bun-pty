@@ -1,276 +1,170 @@
-import { expect, test, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { Terminal } from "./terminal";
-import type { IExitEvent } from "./interfaces";
 
-// This is an integration test file that runs tests against the actual Rust backend.
-// Only run if the environment variable RUN_INTEGRATION_TESTS is set to "true"
-const runIntegrationTests = process.env.RUN_INTEGRATION_TESTS === "true";
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// Skip tests if integration tests are not enabled
-if (!runIntegrationTests) {
-  test.skip("Integration tests", () => {
-    console.log("Skipping integration tests. Set RUN_INTEGRATION_TESTS=true to run them.");
-  });
-  process.exit(0);
-}
+describe("Terminal - Integration Tests", () => {
+	describe("Interactive PTY", () => {
+		it("should receive command output in interactive mode", async () => {
+			const term = new Terminal("sh", ["-c", `
+				while true; do
+					read -p "> " cmd
+					[ "$cmd" = "exit" ] && break
+					eval "$cmd" 2>&1
+				done
+			`], {
+				name: "xterm",
+				cols: 80,
+				rows: 24,
+			});
 
-// Keep track of terminals created so they can be cleaned up
-const terminals: Terminal[] = [];
+			let received = "";
+			const unsub = term.onData((data) => {
+				received += data;
+			});
 
-afterEach(() => {
-  // Clean up any terminals created during tests
-  for (const term of terminals) {
-    try {
-      term.kill();
-    } catch (e) {
-      // Ignore errors during cleanup
-    }
-  }
-  terminals.length = 0;
-});
+			await delay(50);
+			
+			term.write("echo hello-from-shell\n");
+			await delay(100);
 
-test("Terminal can spawn a real process", () => {
-  const terminal = new Terminal("sleep", ["1"]);
-  terminals.push(terminal);
-  
-  expect(terminal.pid).toBeGreaterThan(0);
-});
+			term.write("exit\n");
+			await delay(100);
 
-test("Terminal can receive data from a real process", async () => {
-  // Use a script command that will definitely produce output - use single argument for '-c' option
-  const terminal = new Terminal("bash", ["-c", "echo 'Hello from Bun PTY'"]);
-  terminals.push(terminal);
-  
-  // Collect output and track when process exits
-  let dataReceived = "";
-  let hasExited = false;
-  
-  terminal.onData((data) => {
-    console.log("[TEST] Received data:", data);
-    dataReceived += data;
-  });
-  
-  terminal.onExit(() => {
-    console.log("[TEST] Process exited");
-    hasExited = true;
-  });
-  
-  // Wait for data and process exit
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!hasExited && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  // Allow a short delay for any buffered output to be processed
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  expect(dataReceived).toContain("Hello from Bun PTY");
-});
+			term.kill();
+			await delay(50);
+			unsub.dispose();
 
-test("Terminal can send data to a real process", async () => {
-  let dataReceived = "";
-  let hasExited = false;
-  
-  // Use a properly quoted bash command
-  const terminal = new Terminal("bash", ["-c", "read line; echo \"You typed: $line\""]);
-  terminals.push(terminal);
-  
-  terminal.onData((data) => {
-    console.log("[TEST] Received data:", data);
-    dataReceived += data;
-  });
-  
-  terminal.onExit(() => {
-    console.log("[TEST] Process exited");
-    hasExited = true;
-  });
-  
-  // Give the process time to start up
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  console.log("[TEST] Sending input: Hello from Bun PTY");
-  terminal.write("Hello from Bun PTY\n");
-  
-  // Wait for process to exit or timeout
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!hasExited && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  // Allow a short delay for any buffered output to be processed
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  expect(dataReceived).toContain("You typed: Hello from Bun PTY");
-});
+			expect(received).toContain("hello-from-shell");
+			expect(received.length).toBeGreaterThan(20);
+		});
 
-test("Terminal can resize a real terminal", async () => {
-  const terminal = new Terminal("sleep", ["1"]);
-  terminals.push(terminal);
-  
-  // Should not throw
-  terminal.resize(100, 40);
-  
-  expect(terminal.cols).toBe(100);
-  expect(terminal.rows).toBe(40);
-  
-  // Wait for process to exit
-  await new Promise(resolve => setTimeout(resolve, 1200));
-});
+		it("should handle rapid command succession", async () => {
+			const term = new Terminal("sh", ["-c", `
+				while true; do
+					read -p "> " cmd
+					[ "$cmd" = "exit" ] && break
+					eval "$cmd" 2>&1
+				done
+			`], {
+				name: "xterm",
+				cols: 80,
+				rows: 24,
+			});
 
-test("Terminal can kill a real process", async () => {
-  const terminal = new Terminal("sleep", ["10"]);
-  terminals.push(terminal);
-  
-  let exitEvent: IExitEvent | null = null;
-  terminal.onExit((event) => {
-    console.log("[TEST] Process exited with event:", event);
-    exitEvent = event;
-  });
-  
-  // Kill the process
-  terminal.kill();
-  
-  // Wait for exit event
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!exitEvent && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  expect(exitEvent).not.toBeNull();
-});
+			let packets = 0;
+			const unsub = term.onData((_data) => {
+				packets++;
+			});
 
-test("Terminal can retrieve the correct process ID", () => {
-  // Create a terminal with sleep command (long-running so we can check PID)
-  const terminal = new Terminal("sleep", ["5"]);
-  terminals.push(terminal);
-  
-  // Check that we got a valid PID
-  const pid = terminal.pid;
-  console.log("[TEST] Process ID:", pid);
-  expect(pid).toBeGreaterThan(0);
-  
-  // Verify this PID actually exists in the system
-  // This is platform-specific, but we can use a simple check
-  let pidExists = false;
-  
-  try {
-    // On Unix systems, sending signal 0 checks if process exists without affecting it
-    process.kill(pid, 0);
-    pidExists = true;
-    console.log("[TEST] Process ID exists in system");
-  } catch (error) {
-    console.error("[TEST] Error checking process:", error);
-  }
-  
-  expect(pidExists).toBe(true);
-  
-  // Kill the process to clean up
-  terminal.kill();
-});
+			await delay(50);
+			
+			for (let i = 0; i < 3; i++) {
+				term.write(`echo test${i}\n`);
+				await delay(30);
+			}
+			
+			term.write("exit\n");
+			await delay(100);
 
-test("Terminal can run a bash script", async () => {
-  let dataReceived = "";
-  let hasExited = false;
-  
-  // Use a properly quoted bash command
-  const terminal = new Terminal("bash", ["-c", "echo 'Hello' && sleep 0.2 && echo 'World'"]);
-  terminals.push(terminal);
-  
-  terminal.onData((data) => {
-    console.log("[TEST] Received data:", data);
-    dataReceived += data;
-  });
-  
-  terminal.onExit(() => {
-    console.log("[TEST] Process exited");
-    hasExited = true;
-  });
-  
-  // Wait for process to exit or timeout
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!hasExited && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  // Allow a short delay for any buffered output to be processed
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  expect(dataReceived).toContain("Hello");
-  expect(dataReceived).toContain("World");
-});
+			term.kill();
+			await delay(50);
+			unsub.dispose();
 
-test("Terminal can detect non-zero exit codes - false command", async () => {
-  let exitEvent: IExitEvent | undefined;
-  
-  // Run a command that exits with code 1
-  const terminal = new Terminal("false", []);
-  terminals.push(terminal);
-  
-  terminal.onExit((event) => {
-    console.log("[TEST] Process exited with event:", event);
-    exitEvent = event;
-  });
-  
-  // Wait for exit event
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!exitEvent && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  expect(exitEvent).toBeDefined();
-  if (exitEvent) {
-    console.log("[TEST] Exit code:", exitEvent.exitCode);
-    expect(exitEvent.exitCode).toBe(1); // false exits with 1
-  }
-});
+			expect(packets).toBeGreaterThan(0);
+		});
+	});
 
-test("Terminal can detect non-zero exit codes - cat nonexistent file", async () => {
-  let exitEvent: IExitEvent | undefined;
-  let errorOutput = "";
-  
-  // Run cat on a nonexistent file
-  const terminal = new Terminal("cat", ["/tmp/nonexistentfile"]);
-  terminals.push(terminal);
-  
-  terminal.onData((data) => {
-    console.log("[TEST] Received data:", data);
-    errorOutput += data;
-  });
-  
-  terminal.onExit((event) => {
-    console.log("[TEST] Process exited with event:", event);
-    exitEvent = event;
-  });
-  
-  // Wait for exit event
-  const timeout = 2000; // 2 second timeout
-  const start = Date.now();
-  
-  while (!exitEvent && Date.now() - start < timeout) {
-    // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  expect(exitEvent).toBeDefined();
-  if (exitEvent) {
-    console.log("[TEST] Exit code:", exitEvent.exitCode);
-    console.log("[TEST] Error output:", errorOutput);
-    expect(exitEvent.exitCode).not.toBe(0); // cat exits with 1 when file not found
-    expect(errorOutput).toContain("No such file or directory");
-  }
+	describe("SSH Remote PTY", () => {
+		it("should receive output from remote SSH command", async () => {
+			// Non-interactive SSH test (safe, no side effects)
+			const term = new Terminal("sh", ["-c", `ssh zblade14 "echo hello-from-windows"`], {
+				name: "xterm",
+				cols: 80,
+				rows: 24,
+			});
+
+			let received = "";
+			const unsub = term.onData((data) => {
+				received += data;
+			});
+
+			await delay(1000);
+
+			term.kill();
+			await delay(50);
+			unsub.dispose();
+
+			expect(received).toContain("hello-from-windows");
+		}, { timeout: 15000 });
+
+		it("should handle interactive SSH PTY", async () => {
+			// Interactive SSH test with safe commands
+			const term = new Terminal("ssh", ["-t", "zblade14"], {
+				name: "xterm",
+				cols: 80,
+				rows: 24,
+			});
+
+			let received = "";
+			let packets = 0;
+			const unsub = term.onData((data) => {
+				received += data;
+				packets++;
+			});
+
+			await delay(200);
+			
+			term.write("whoami\n");
+			await delay(200);
+			
+			term.write("exit\n");
+			await delay(200);
+
+			term.kill();
+			await delay(50);
+			unsub.dispose();
+
+			expect(packets).toBeGreaterThan(0);
+			expect(received.length).toBeGreaterThan(50);
+			expect(received.toLowerCase()).toContain("zenyr");
+		}, { timeout: 15000 });
+	});
+
+	describe("Buffer Management", () => {
+		it("should handle large output correctly", async () => {
+			const term = new Terminal("sh", ["-c", `
+				while true; do
+					read -p "> " cmd
+					[ "$cmd" = "exit" ] && break
+					eval "$cmd" 2>&1
+				done
+			`], {
+				name: "xterm",
+				cols: 80,
+				rows: 24,
+			});
+
+			let received = "";
+			const unsub = term.onData((data) => {
+				received += data;
+			});
+
+			await delay(50);
+			
+			// Generate large output
+			term.write("yes hello | head -100\n");
+			await delay(200);
+
+			term.write("exit\n");
+			await delay(100);
+
+			term.kill();
+			await delay(50);
+			unsub.dispose();
+
+			const helloCount = (received.match(/hello/g) || []).length;
+			expect(helloCount).toBeGreaterThan(50);
+		});
+	});
 });

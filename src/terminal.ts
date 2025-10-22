@@ -230,11 +230,14 @@ export class Terminal implements IPty {
 		if (this._readLoop) return;
 		this._readLoop = true;
 
-		const buf = Buffer.allocUnsafe(4096);
+		const buf = Buffer.allocUnsafe(8192);
+		let consecutiveEmptyReads = 0;
+		const maxEmptyReads = 100; // ~800ms before backoff
 
 		while (this._readLoop && !this._closing) {
 			const n = lib.symbols.bun_pty_read(this.handle, ptr(buf), buf.length);
 			if (n > 0) {
+				consecutiveEmptyReads = 0;
 				this._onData.fire(buf.subarray(0, n).toString("utf8"));
 			} else if (n === -2) {
 				// CHILD_EXITED
@@ -245,8 +248,10 @@ export class Terminal implements IPty {
 				// error
 				break;
 			} else {
-				// 0 bytes: wait
-				await new Promise((r) => setTimeout(r, 8));
+				// 0 bytes: wait with adaptive backoff
+				consecutiveEmptyReads++;
+				const waitTime = Math.min(8 + consecutiveEmptyReads, 50);
+				await new Promise((r) => setTimeout(r, waitTime));
 			}
 		}
 	}
