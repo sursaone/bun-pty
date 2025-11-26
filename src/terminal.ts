@@ -170,7 +170,7 @@ export class Terminal implements IPty {
 		if (this._readLoop) return;
 		this._readLoop = true;
 
-		const buf = Buffer.allocUnsafe(4096);
+		const buf = Buffer.allocUnsafe(8192);
 
 		while (this._readLoop && !this._closing) {
 			const n = lib.symbols.bun_pty_read(this.handle, ptr(buf), buf.length);
