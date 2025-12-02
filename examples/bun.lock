@@ -1,10 +1,11 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "examples",
       "dependencies": {
-        "bun-pty": "^0.3.1",
+        "bun-pty": "^0.4.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -19,7 +20,7 @@
 
     "@types/node": ["@types/node@22.15.21", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-EV/37Td6c+MgKAbkcLG6vqZ2zEYHD7bvSrzqqs2RIhbA6w3x+Dqz8MZM3sP6kGTeLrdoOgKZe+Xja7tUB2DNkQ=="],
 
-    "bun-pty": ["bun-pty@0.3.1", "", {}, "sha512-vmamvr6TL4gioXVipjhI4uMypgZAYZLeB1MbK7dAmBk0HHe7GimekOwerQnUSCbOlJi3s78kswcsJBCuYERXeQ=="],
+    "bun-pty": ["bun-pty@0.4.0", "", {}, "sha512-6XA1IUZBfY08LDeQhmpXkxVLoN5GwonkymyhqmKU7JnoSpDx6Z5OZVfZ/jLX2t6oC5VIOseoZP/j7Dw6ld//hA=="],
 
     "bun-types": ["bun-types@1.2.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-rRjA1T6n7wto4gxhAO/ErZEtOXyEZEmnIHQfl0Dt1QQSB4QV0iP6BZ9/YB5fZaHFQ2dwHFrmPaRQ9GGMX01k9Q=="],
 
