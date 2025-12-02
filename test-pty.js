@@ -15,7 +15,7 @@ console.log(`Opening shared library: ${libraryPath}`);
 // Define the FFI interface
 const lib = dlopen(libraryPath, {
   bun_pty_spawn: {
-    args: [FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
+    args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
     returns: FFIType.i32
   },
   bun_pty_read: {
@@ -52,8 +52,9 @@ async function runTest() {
   // Create null-terminated C strings
   const cmd = Buffer.from("bash\0", "utf8");
   const cwd = Buffer.from(`${process.cwd()}\0`, "utf8");
-  
-  const ptyHandle = symbols.bun_pty_spawn(cmd, cwd, 80, 24);
+  const env = Buffer.from("TEST_VAR=test_value\0\0", "utf8");
+
+  const ptyHandle = symbols.bun_pty_spawn(cmd, cwd, env, 80, 24);
   
   if (ptyHandle < 0) {
     console.error("Failed to create PTY!");

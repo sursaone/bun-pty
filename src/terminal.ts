@@ -4,13 +4,27 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { existsSync } from "node:fs";
 
 export const DEFAULT_COLS = 80;
 export const DEFAULT_ROWS = 24;
 export const DEFAULT_FILE = "sh";
 export const DEFAULT_NAME = "xterm";
+
+/**
+ * Quote a string for shell-words compatible splitting on the Rust side.
+ * We are not invoking a shell; quoting is only to preserve token boundaries
+ * when Rust parses the command line with shell_words::split.
+ * 
+ * @param s - The string to quote
+ * @returns The quoted string
+ */
+function shQuote(s: string): string {
+	if (s.length === 0) return "''";
+	// Replace ' with '\'' (close-quote, escaped ', reopen)
+	return `'${s.replace(/'/g, `'\\''`)}'`;
+}
 
 // terminal.ts  – loader fragment only
 
@@ -21,27 +35,41 @@ function resolveLibPath(): string {
 	const platform = process.platform;
 	const arch = process.arch;
 
-	const filename =
+	// Try both architecture-specific and generic filenames
+	const filenames =
 		platform === "darwin"
 			? arch === "arm64"
-				? "librust_pty_arm64.dylib"
-				: "librust_pty.dylib"
+				? ["librust_pty_arm64.dylib", "librust_pty.dylib"]
+				: ["librust_pty.dylib"]
 			: platform === "win32"
-			? "rust_pty.dll"
+			? ["rust_pty.dll"]
 			: arch === "arm64"
-			? "librust_pty_arm64.so"
-			: "librust_pty.so";
+			? ["librust_pty_arm64.so", "librust_pty.so"]
+			: ["librust_pty.so"];
 
-	// Start from the current module's location (inside node_modules/bun-pty/dist)
+	// Start from the current module's location
 	const base = Bun.fileURLToPath(import.meta.url);
-	const here = base.replace(/\/dist\/.*$/, ""); // up to bun-pty/
+	const fileDir = dirname(base);
+	const dirName = basename(fileDir);
+	
+	// Handle both development (src/terminal.ts) and production (dist/terminal.js) cases
+	// If we're in src/ or dist/, go up one level to get the project root
+	const here = (dirName === "src" || dirName === "dist")
+		? dirname(fileDir) // Go up one level from src/ or dist/
+		: fileDir; // Otherwise use the directory as-is
 
-	const fallbackPaths = [
-		join(here, "rust-pty", "target", "release", filename),       // node_modules/bun-pty/rust-pty/target/release
-		join(here, "..", "bun-pty", "rust-pty", "target", "release", filename), // monorepo setups
-		join(process.cwd(), "node_modules", "bun-pty", "rust-pty", "target", "release", filename),
-		join(process.cwd(), "rust-pty", "target", "release", filename), // development: run from project root
+	const basePaths = [
+		join(here, "rust-pty", "target", "release"),       // Direct path from project root
+		join(here, "..", "bun-pty", "rust-pty", "target", "release"), // monorepo setups
+		join(process.cwd(), "node_modules", "bun-pty", "rust-pty", "target", "release"),
 	];
+
+	const fallbackPaths = [];
+	for (const basePath of basePaths) {
+		for (const filename of filenames) {
+			fallbackPaths.push(join(basePath, filename));
+		}
+	}
 
 	for (const path of fallbackPaths) {
 		if (existsSync(path)) return path;
@@ -61,7 +89,7 @@ let lib: any;
 try {
 	lib = dlopen(libPath, {
 		bun_pty_spawn: {
-			args: [FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
+			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
 			returns: FFIType.i32,
 		},
 		bun_pty_write: {
@@ -78,6 +106,7 @@ try {
 		},
 		bun_pty_kill: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_pid: { args: [FFIType.i32], returns: FFIType.i32 },
+		bun_pty_get_exit_code: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_close: { args: [FFIType.i32], returns: FFIType.void },
 	});
 } catch (error) {
@@ -105,22 +134,20 @@ export class Terminal implements IPty {
 		this._cols = opts.cols ?? DEFAULT_COLS;
 		this._rows = opts.rows ?? DEFAULT_ROWS;
 		const cwd = opts.cwd ?? process.cwd();
+		// Properly quote arguments to preserve spaces and special characters
+		const cmdline = [file, ...args.map(shQuote)].join(" ");
 
-		// Properly quote arguments that contain spaces or special characters
-		const quoteArg = (arg: string): string => {
-			// If argument contains spaces, quotes, or special shell characters, quote it
-			if (/[\s'"$`\\!*?#&;|<>(){}[\]]/.test(arg)) {
-				// Escape single quotes by replacing ' with '\''
-				return `'${arg.replace(/'/g, "'\\''")}'`;
-			}
-			return arg;
-		};
-
-		const cmdline = [file, ...args.map(quoteArg)].join(" ");
+		// Format environment variables as null-terminated string
+		let envStr = "";
+		if (opts.env) {
+			const envPairs = Object.entries(opts.env).map(([k, v]) => `${k}=${v}`);
+			envStr = envPairs.join("\0") + "\0";
+		}
 
 		this.handle = lib.symbols.bun_pty_spawn(
 			Buffer.from(`${cmdline}\0`, "utf8"),
 			Buffer.from(`${cwd}\0`, "utf8"),
+			Buffer.from(`${envStr}\0`, "utf8"),
 			this._cols,
 			this._rows,
 		);
@@ -189,7 +216,8 @@ export class Terminal implements IPty {
 				this._onData.fire(buf.subarray(0, n).toString("utf8"));
 			} else if (n === -2) {
 				// CHILD_EXITED
-				this._onExit.fire({ exitCode: 0 });
+				const exitCode = lib.symbols.bun_pty_get_exit_code(this.handle);
+				this._onExit.fire({ exitCode });
 				break;
 			} else if (n < 0) {
 				// error

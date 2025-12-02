@@ -1,0 +1,25 @@
+# Bun configuration file
+# See https://bun.com/docs/cli/bunfig for more information
+
+[test]
+# Coverage configuration
+# Default reporters: text (console) and lcov (file for CI)
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+
+# Exclude patterns from coverage
+coveragePathIgnorePatterns = [
+  "**/*.test.ts",
+  "**/*.spec.ts",
+  "**/*.integration.test.ts",
+  "dist/**",
+  "node_modules/**",
+  "rust-pty/**",
+  "examples/**"
+]
+
+# Test execution
+timeout = 30000
+maxConcurrency = 20
+

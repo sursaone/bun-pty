@@ -10,6 +10,7 @@ interface TerminalOptions {
   args?: string[];
   cwd?: string;
   termName?: string;
+  env?: Record<string, string>;
 }
 
 /**
@@ -20,27 +21,35 @@ function createTypedTerminal(options: TerminalOptions): IPty {
     shell,
     args = [],
     cwd = process.cwd(),
-    termName = 'xterm-256color'
+    termName = 'xterm-256color',
+    env
   } = options;
   
   return spawn(shell, args, {
     name: termName,
     cwd,
     cols: 100,
-    rows: 30
+    rows: 30,
+    env
   });
 }
 
 // Usage example with full type safety
 async function main() {
-  // Create a terminal running bash
+  // Create a terminal running bash with custom environment variables
   const terminal = createTypedTerminal({
     shell: 'bash',
-    termName: 'xterm-256color'
+    termName: 'xterm-256color',
+    cwd: process.cwd(), // Custom working directory
+    env: {
+      CUSTOM_VAR: 'custom_value',
+      EXAMPLE_ENV: 'bun-pty-example'
+    }
   });
   
   console.log(`Terminal created with PID: ${terminal.pid}`);
   console.log(`Terminal size: ${terminal.cols}x${terminal.rows}`);
+  console.log(`Process name: ${terminal.process}`);
   
   // Add event listeners
   const dataHandler = terminal.onData((data: string) => {
@@ -48,20 +57,26 @@ async function main() {
   });
   
   const exitHandler = terminal.onExit((event: IExitEvent) => {
-    console.log(`Terminal exited with code: ${event.exitCode}`);
+    console.log(`\nTerminal exited with code: ${event.exitCode}`);
+    if (event.signal) {
+      console.log(`Exit signal: ${event.signal}`);
+    }
     process.exit(0);
   });
   
   // Write some commands
   terminal.write('echo "Hello from TypeScript with bun-pty"\n');
+  terminal.write('echo "Custom env var: $CUSTOM_VAR"\n');
   
   // Resize the terminal
   terminal.resize(120, 40);
+  console.log(`Terminal resized to: ${terminal.cols}x${terminal.rows}`);
   
-  // Exit after 5 seconds
+  // Exit after 5 seconds using kill() method
   setTimeout(() => {
-    console.log('Sending exit command...');
-    terminal.write('exit\n');
+    console.log('\nKilling terminal with SIGTERM...');
+    // Demonstrate kill() method with signal
+    terminal.kill('SIGTERM');
     
     // Clean up event handlers
     dataHandler.dispose();

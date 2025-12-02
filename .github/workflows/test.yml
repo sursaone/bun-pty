@@ -1,0 +1,68 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: windows-latest
+            target: x86_64-pc-windows-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust library
+        run: |
+          cd rust-pty
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run unit tests
+        run: bun run test:unit
+
+      - name: Run unit tests with coverage
+        run: bun test --coverage --coverage-reporter=lcov src/interfaces.test.ts src/terminal.test.ts src/index.test.ts
+
+      - name: Run integration tests
+        run: bun run test:integration
+        env:
+          RUN_INTEGRATION_TESTS: true
+
+      - name: Upload coverage to artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.runner }}-${{ matrix.target }}
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
