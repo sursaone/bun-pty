@@ -1,4 +1,4 @@
-import { dlopen, FFIType, suffix } from "bun:ffi";
+import { dlopen, FFIType, suffix, ptr } from "bun:ffi";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 
@@ -23,7 +23,7 @@ const lib = dlopen(libraryPath, {
     returns: FFIType.i32
   },
   bun_pty_write: {
-    args: [FFIType.i32, FFIType.cstring],
+    args: [FFIType.i32, FFIType.pointer, FFIType.i32],
     returns: FFIType.i32
   },
   bun_pty_resize: {
@@ -99,8 +99,8 @@ async function runTest() {
   
   // Send a command
   console.log("Sending 'echo Hello from Bun PTY' command...");
-  const command = Buffer.from("echo Hello from Bun PTY\n\0", "utf8");
-  symbols.bun_pty_write(ptyHandle, command);
+  const command = Buffer.from("echo Hello from Bun PTY\n", "utf8");
+  symbols.bun_pty_write(ptyHandle, ptr(command), command.length);
   
   // Wait for command to execute
   await new Promise(resolve => setTimeout(resolve, 500));
@@ -115,8 +115,8 @@ async function runTest() {
   
   // Send exit command
   console.log("Sending 'exit' command...");
-  const exitCommand = Buffer.from("exit\n\0", "utf8");
-  symbols.bun_pty_write(ptyHandle, exitCommand);
+  const exitCommand = Buffer.from("exit\n", "utf8");
+  symbols.bun_pty_write(ptyHandle, ptr(exitCommand), exitCommand.length);
   
   // Wait for process to exit
   await new Promise(resolve => setTimeout(resolve, 500));

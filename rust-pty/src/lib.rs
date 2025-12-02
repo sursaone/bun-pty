@@ -153,6 +153,7 @@ struct Pty {
     killer: Arc<Mutex<Box<dyn ChildKiller + Send + Sync>>>,
     exited: AtomicBool,
     pid:    c_int,
+    pending: Mutex<Vec<u8>>,               // NEW: stash bytes that didn't fit last time
 }
 
 unsafe impl Send for Pty {}
@@ -215,6 +216,7 @@ impl Pty {
             killer,
             exited: AtomicBool::new(false),
             pid,
+            pending: Mutex::new(Vec::new()),       // NEW: initialize empty pending buffer
         })
     }
 
@@ -303,14 +305,35 @@ pub unsafe extern "C" fn bun_pty_read(
     len:    c_int,
 ) -> c_int {
     if handle <= 0 || buf.is_null() || len <= 0 { return ERROR; }
-    with(handle as u32, |pty| match pty.read() {
-        Ok(Msg::Data(d)) if !d.is_empty() => {
-            let n = d.len().min(len as usize);
-            unsafe { std::ptr::copy_nonoverlapping(d.as_ptr(), buf, n); }
-            n as c_int
+    with(handle as u32, |pty| {
+        let max = len as usize;
+
+        // 1) serve pending data first
+        let mut pend = pty.pending.lock().unwrap();
+        if !pend.is_empty() {
+            let n = pend.len().min(max);
+            unsafe { std::ptr::copy_nonoverlapping(pend.as_ptr(), buf, n); }
+            // drop the bytes we returned
+            pend.drain(..n);
+            return n as c_int;
         }
-        Ok(Msg::End) => CHILD_EXITED,
-        _            => 0,                         // no data
+        drop(pend); // release lock before potentially blocking ops
+
+        // 2) pull fresh data
+        match pty.read() {
+            Ok(Msg::Data(d)) if !d.is_empty() => {
+                let n = d.len().min(max);
+                unsafe { std::ptr::copy_nonoverlapping(d.as_ptr(), buf, n); }
+                if d.len() > n {
+                    // stash remainder for next call
+                    let mut pend = pty.pending.lock().unwrap();
+                    pend.extend_from_slice(&d[n..]);
+                }
+                n as c_int
+            }
+            Ok(Msg::End) => CHILD_EXITED,
+            _            => 0,                         // no data
+        }
     })
 }
 
