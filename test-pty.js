@@ -19,7 +19,7 @@ const lib = dlopen(libraryPath, {
     returns: FFIType.i32
   },
   bun_pty_read: {
-    args: [FFIType.i32, FFIType.ptr, FFIType.i32],
+    args: [FFIType.i32, FFIType.pointer, FFIType.i32],
     returns: FFIType.i32
   },
   bun_pty_write: {
@@ -39,6 +39,10 @@ const lib = dlopen(libraryPath, {
     returns: FFIType.void
   },
   bun_pty_get_pid: {
+    args: [FFIType.i32],
+    returns: FFIType.i32
+  },
+  bun_pty_get_exit_code: {
     args: [FFIType.i32],
     returns: FFIType.i32
   }
@@ -73,7 +77,8 @@ async function runTest() {
     const bytesRead = symbols.bun_pty_read(ptyHandle, buffer, buffer.length);
     
     if (bytesRead === -2) {
-      console.log("Child process has exited.");
+      const exitCode = symbols.bun_pty_get_exit_code(ptyHandle);
+      console.log(`Child process has exited with code: ${exitCode}`);
       return null;
     }
     
