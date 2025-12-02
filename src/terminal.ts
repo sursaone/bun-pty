@@ -4,7 +4,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
-import { join } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { existsSync } from "node:fs";
 
 export const DEFAULT_COLS = 80;
@@ -35,11 +35,14 @@ function resolveLibPath(): string {
 
 	// Start from the current module's location
 	const base = Bun.fileURLToPath(import.meta.url);
+	const fileDir = dirname(base);
+	const dirName = basename(fileDir);
 	
 	// Handle both development (src/terminal.ts) and production (dist/terminal.js) cases
-	const here = base.includes('/src/') 
-		? base.replace(/\/src\/.*$/, "") // In development: strip /src/terminal.ts
-		: base.replace(/\/dist\/.*$/, ""); // In production: strip /dist/terminal.js
+	// If we're in src/ or dist/, go up one level to get the project root
+	const here = (dirName === "src" || dirName === "dist")
+		? dirname(fileDir) // Go up one level from src/ or dist/
+		: fileDir; // Otherwise use the directory as-is
 
 	const basePaths = [
 		join(here, "rust-pty", "target", "release"),       // Direct path from project root
