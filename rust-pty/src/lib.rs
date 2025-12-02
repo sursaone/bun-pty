@@ -33,6 +33,33 @@ fn debug(msg: &str) {
     }
 }
 
+fn parse_env_string(env_ptr: *const c_char) -> HashMap<String, String> {
+    if env_ptr.is_null() {
+        return HashMap::new();
+    }
+
+    let mut env_map = HashMap::new();
+    let mut current_ptr = env_ptr;
+
+    unsafe {
+        while *current_ptr != 0 {
+            let cstr = CStr::from_ptr(current_ptr);
+            
+            if let Ok(env_str) = cstr.to_str() {
+                if let Some((key, value)) = env_str.split_once('=') {
+                    if !key.is_empty() {
+                        env_map.insert(key.to_string(), value.to_string());
+                    }
+                }
+            }
+
+            current_ptr = current_ptr.add(cstr.to_bytes_with_nul().len());
+        }
+    }
+
+    env_map
+}
+
 /* ---------- command struct ---------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +71,7 @@ struct Command {
 }
 
 impl Command {
-    fn from_cmdline(cmdline: &str, cwd: &str) -> Self {
+    fn from_cmdline(cmdline: &str, cwd: &str, env_ptr: *const c_char) -> Self {
         let tokens = split(cmdline).unwrap_or_default();   // shell-accurate split
         if tokens.is_empty() {
             return Self {
@@ -58,7 +85,7 @@ impl Command {
         let cmd  = tokens[0].clone();
         let args = tokens[1..].to_vec();
 
-        let env = std::env::vars().collect();              // forward everything
+        let env = parse_env_string(env_ptr);
 
         Self { cmd, args, env, cwd: cwd.to_owned() }
     }
@@ -127,6 +154,7 @@ struct Pty {
     exited: AtomicBool,
     exit_code: AtomicI32,
     pid:    c_int,
+    pending: Mutex<Vec<u8>>,               // NEW: stash bytes that didn't fit last time
 }
 
 unsafe impl Send for Pty {}
@@ -254,6 +282,7 @@ fn with<F: FnOnce(&Arc<Pty>) -> c_int>(id: u32, f: F) -> c_int {
 pub unsafe extern "C" fn bun_pty_spawn(
     cmd:  *const c_char,
     cwd:  *const c_char,
+    env:  *const c_char,
     cols: c_int,
     rows: c_int,
 ) -> c_int {
@@ -263,8 +292,9 @@ pub unsafe extern "C" fn bun_pty_spawn(
     let cwd     = unsafe { CStr::from_ptr(cwd) }.to_string_lossy();
 
     let size = PtySize { cols: cols as u16, rows: rows as u16, pixel_width: 0, pixel_height: 0 };
-    match Pty::new(Command::from_cmdline(&cmdline, &cwd), size) {
-        Ok(p)  => store(p) as c_int,
+    let cmd = Command::from_cmdline(&cmdline, &cwd, env);
+    match Pty::new(cmd, size) {
+        Ok(p)  => store(Arc::new(p)) as c_int,
         Err(e) => { debug(&format!("spawn error: {e}")); ERROR },
     }
 }
@@ -286,14 +316,35 @@ pub unsafe extern "C" fn bun_pty_read(
     len:    c_int,
 ) -> c_int {
     if handle <= 0 || buf.is_null() || len <= 0 { return ERROR; }
-    with(handle as u32, |pty| match pty.read() {
-        Ok(Msg::Data(d)) if !d.is_empty() => {
-            let n = d.len().min(len as usize);
-            unsafe { std::ptr::copy_nonoverlapping(d.as_ptr(), buf, n); }
-            n as c_int
+    with(handle as u32, |pty| {
+        let max = len as usize;
+
+        // 1) serve pending data first
+        let mut pend = pty.pending.lock().unwrap();
+        if !pend.is_empty() {
+            let n = pend.len().min(max);
+            unsafe { std::ptr::copy_nonoverlapping(pend.as_ptr(), buf, n); }
+            // drop the bytes we returned
+            pend.drain(..n);
+            return n as c_int;
         }
-        Ok(Msg::End) => CHILD_EXITED,
-        _            => 0,                         // no data
+        drop(pend); // release lock before potentially blocking ops
+
+        // 2) pull fresh data
+        match pty.read() {
+            Ok(Msg::Data(d)) if !d.is_empty() => {
+                let n = d.len().min(max);
+                unsafe { std::ptr::copy_nonoverlapping(d.as_ptr(), buf, n); }
+                if d.len() > n {
+                    // stash remainder for next call
+                    let mut pend = pty.pending.lock().unwrap();
+                    pend.extend_from_slice(&d[n..]);
+                }
+                n as c_int
+            }
+            Ok(Msg::End) => CHILD_EXITED,
+            _            => 0,                         // no data
+        }
     })
 }
 

@@ -20,22 +20,38 @@ function resolveLibPath(): string {
 
 	const platform = process.platform;
 
-	const filename =
+	// Try both architecture-specific and generic filenames
+	const filenames =
 		platform === "darwin"
-			? "librust_pty.dylib"
+			? arch === "arm64"
+				? ["librust_pty_arm64.dylib", "librust_pty.dylib"]
+				: ["librust_pty.dylib"]
 			: platform === "win32"
-			? "rust_pty.dll"
-			: "librust_pty.so";
+			? ["rust_pty.dll"]
+			: arch === "arm64"
+			? ["librust_pty_arm64.so", "librust_pty.so"]
+			: ["librust_pty.so"];
 
-	// Start from the current module's location (inside node_modules/bun-pty/dist or src during development)
+	// Start from the current module's location
 	const base = Bun.fileURLToPath(import.meta.url);
-	const here = base.replace(/\/(dist|src)\/.*$/, ""); // up to bun-pty/
+	
+	// Handle both development (src/terminal.ts) and production (dist/terminal.js) cases
+	const here = base.includes('/src/') 
+		? base.replace(/\/src\/.*$/, "") // In development: strip /src/terminal.ts
+		: base.replace(/\/dist\/.*$/, ""); // In production: strip /dist/terminal.js
 
-	const fallbackPaths = [
-		join(here, "rust-pty", "target", "release", filename),       // node_modules/bun-pty/rust-pty/target/release or dev
-		join(here, "..", "bun-pty", "rust-pty", "target", "release", filename), // monorepo setups
-		join(process.cwd(), "node_modules", "bun-pty", "rust-pty", "target", "release", filename),
+	const basePaths = [
+		join(here, "rust-pty", "target", "release"),       // Direct path from project root
+		join(here, "..", "bun-pty", "rust-pty", "target", "release"), // monorepo setups
+		join(process.cwd(), "node_modules", "bun-pty", "rust-pty", "target", "release"),
 	];
+
+	const fallbackPaths = [];
+	for (const basePath of basePaths) {
+		for (const filename of filenames) {
+			fallbackPaths.push(join(basePath, filename));
+		}
+	}
 
 	for (const path of fallbackPaths) {
 		if (existsSync(path)) return path;
@@ -55,7 +71,7 @@ let lib: any;
 try {
 	lib = dlopen(libPath, {
 		bun_pty_spawn: {
-			args: [FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
+			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
 			returns: FFIType.i32,
 		},
 		bun_pty_write: {
@@ -100,12 +116,19 @@ export class Terminal implements IPty {
 		this._cols = opts.cols ?? DEFAULT_COLS;
 		this._rows = opts.rows ?? DEFAULT_ROWS;
 		const cwd = opts.cwd ?? process.cwd();
-
 		const cmdline = [file, ...args].join(" ");
+
+		// Format environment variables as null-terminated string
+		let envStr = "";
+		if (opts.env) {
+			const envPairs = Object.entries(opts.env).map(([k, v]) => `${k}=${v}`);
+			envStr = envPairs.join("\0") + "\0";
+		}
 
 		this.handle = lib.symbols.bun_pty_spawn(
 			Buffer.from(`${cmdline}\0`, "utf8"),
 			Buffer.from(`${cwd}\0`, "utf8"),
+			Buffer.from(`${envStr}\0`, "utf8"),
 			this._cols,
 			this._rows,
 		);
