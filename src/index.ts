@@ -4,7 +4,7 @@
  */
 
 import { Terminal } from './terminal';
-import { IPty, IPtyForkOptions, IExitEvent, IDisposable } from './interfaces';
+import type { IPty, IPtyForkOptions, IExitEvent, IDisposable } from './interfaces';
 
 /**
  * Creates and spawns a new PTY with the given command and arguments.
@@ -19,5 +19,5 @@ export function spawn(file: string, args: string[], options: IPtyForkOptions): I
 }
 
 // Export interfaces and implementations
-export { IPty, IPtyForkOptions, IExitEvent, IDisposable };
+export type { IPty, IPtyForkOptions, IExitEvent, IDisposable };
 export { Terminal } from './terminal'; 

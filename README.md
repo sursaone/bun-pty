@@ -188,6 +188,24 @@ interface IDisposable {
 }
 ```
 
+## 🧪 Testing
+
+bun-pty uses [Bun's built-in test runner](https://bun.com/docs/test) for fast, Jest-compatible testing.
+
+```bash
+# Run all tests
+bun test
+
+# Run unit tests only
+bun run test:unit
+
+# Run integration tests (requires Rust library)
+bun run test:integration
+
+# View test coverage
+bun run test:coverage
+```
+
 ## 🔧 Building from Source
 
 If you want to build the package from source:
@@ -224,6 +242,10 @@ bun run build
 
 - **Error: Unable to load shared library**: Make sure you have the necessary system libraries installed.
 - **Process spawn fails**: Check if you have the required permissions and paths.
+
+## 📚 Documentation
+
+- [CHANGELOG.md](./CHANGELOG.md) - Version history and changes
 
 ## 📄 License
 

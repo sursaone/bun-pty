@@ -41,9 +41,10 @@
 		"build:ts": "bun build ./src/index.ts --outdir ./dist --target bun --declaration --external bun:ffi && tsc --emitDeclarationOnly --declaration --outDir dist",
 		"build": "bun run build:rust && bun run build:ts",
 		"test": "bun test",
-		"test:unit": "bun test src/terminal.test.ts",
+		"test:unit": "bun test src/interfaces.test.ts src/terminal.test.ts src/index.test.ts",
 		"test:integration": "RUN_INTEGRATION_TESTS=true bun test src/terminal.integration.test.ts",
 		"test:all": "bun run test:unit && bun run test:integration",
+		"test:coverage": "bun test --coverage src/interfaces.test.ts src/terminal.test.ts src/index.test.ts",
 		"clean": "rm -rf ./dist && cd rust-pty && cargo clean"
 	},
 	"engines": {
@@ -59,9 +60,9 @@
 		"rust-pty/target/release/*.dll"
 	],
 	"devDependencies": {
-		"@types/bun": "^1.2.13",
-		"@types/node": "^22.15.18",
-		"typescript": "^5.8.3"
+		"@types/bun": "1.3.3",
+		"@types/node": "24.10.1",
+		"typescript": "5.9.3"
 	},
 	"publishConfig": {
 		"access": "public"
