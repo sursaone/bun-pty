@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2025-12-30
+
+### Fixed
+- Use ubuntu-22.04 for GLIBC 2.35 compatibility (#23)
+  - Updated CI/CD pipeline to use ubuntu-22.04 to ensure GLIBC 2.35 compatibility
+  - Ensures built binaries work on systems with GLIBC 2.35 and newer
+
 ## [0.4.2] - 2025-12-01
 
 ### Fixed

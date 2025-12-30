@@ -1,6 +1,6 @@
 {
 	"name": "bun-pty",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"description": "Cross-platform pseudoterminal (PTY) implementation for Bun with native performance",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
