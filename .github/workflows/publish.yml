@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Use ubuntu-20.04 for GLIBC 2.31 compatibility (ubuntu-latest has GLIBC 2.39)
-          - runner: ubuntu-20.04
+          # Use ubuntu-22.04 for GLIBC 2.35 compatibility (ubuntu-latest has GLIBC 2.39)
+          - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             out:    librust_pty.so
-          - runner: ubuntu-20.04
+          - runner: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             out:    librust_pty_arm64.so
           - runner: macos-latest
