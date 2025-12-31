@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2025-12-31
+
+### Fixed
+- Enable bun compile support by shipping TypeScript source (#25)
+  - Ship TypeScript source instead of bundled JS for static analysis
+  - Add statically analyzable require() for native library embedding
+  - Fix Windows library name (no 'lib' prefix)
+  - Fix spaces in Windows exe path handling
+  - Add Windows-specific tests
+  - Add compile test script to verify bun build --compile works
+  - Fixes: https://github.com/sursaone/bun-pty/issues/19
+
 ## [0.4.3] - 2025-12-30
 
 ### Fixed
