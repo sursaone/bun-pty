@@ -118,5 +118,8 @@ jobs:
       - name: List bundled libs
         run: ls -R ${{ env.RELEASE_DIR }}
 
+      - name: Build TypeScript declarations
+        run: bun run build:ts
+
       - name: Publish to npm
         run: npm publish

@@ -3,7 +3,7 @@
 	"version": "0.4.5",
 	"description": "Cross-platform pseudoterminal (PTY) implementation for Bun with native performance",
 	"main": "./src/index.ts",
-	"types": "./src/index.ts",
+	"types": "./dist/index.d.ts",
 	"type": "module",
 	"repository": {
 		"type": "git",
@@ -44,7 +44,8 @@
 		"prepare": "bun run build",
 		"prepack": "bun run build",
 		"build:rust": "cd rust-pty && cargo build --release",
-		"build": "bun run build:rust",
+		"build:ts": "tsc --emitDeclarationOnly --declaration --outDir dist",
+		"build": "bun run build:rust && bun run build:ts",
 		"test": "bun test",
 		"test:unit": "bun test src/interfaces.test.ts src/terminal.test.ts src/index.test.ts",
 		"test:integration": "RUN_INTEGRATION_TESTS=true bun test src/terminal.integration.test.ts",
@@ -56,9 +57,8 @@
 		"bun": ">=1.0.0"
 	},
 	"files": [
-		"src/index.ts",
-		"src/terminal.ts",
-		"src/interfaces.ts",
+		"src",
+		"dist",
 		"README.md",
 		"LICENSE",
 		"CHANGELOG.md",
