@@ -18,12 +18,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Use ubuntu-22.04 for GLIBC 2.35 compatibility (ubuntu-latest has GLIBC 2.39)
+          # glibc 2.17 builds (RHEL 7+, CentOS 7+, Ubuntu 14.04+, Debian 8+)
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            zigbuild_target: x86_64-unknown-linux-gnu.2.17
             out:    librust_pty.so
           - runner: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
+            zigbuild_target: aarch64-unknown-linux-gnu.2.17
             out:    librust_pty_arm64.so
           - runner: macos-latest
             target: x86_64-apple-darwin
@@ -45,22 +47,20 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install aarch64 linker
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install zigbuild
+        if: matrix.zigbuild_target
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          pip3 install ziglang
+          cargo install cargo-zigbuild
 
-      - name: Configure aarch64 linker
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Build rust-pty (Linux with zigbuild)
+        if: matrix.zigbuild_target
         run: |
-          mkdir -p rust-pty/.cargo
-          cat > rust-pty/.cargo/config.toml << 'EOF'
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
-          EOF
+          cd rust-pty
+          cargo zigbuild --release --target ${{ matrix.zigbuild_target }}
 
       - name: Build rust-pty
+        if: "!matrix.zigbuild_target"
         run: |
           cd rust-pty
           cargo build --release --target ${{ matrix.target }}
