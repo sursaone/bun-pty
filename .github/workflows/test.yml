@@ -16,7 +16,7 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
           - runner: macos-latest
             target: x86_64-apple-darwin
           - runner: macos-latest
@@ -39,7 +39,24 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          pip3 install ziglang
+          cargo install cargo-zigbuild
+
+      - name: Build Rust library (musl with static libc)
+        if: contains(matrix.target, 'musl')
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cd rust-pty
+          cargo zigbuild --release --target ${{ matrix.target }}
+
       - name: Build Rust library
+        if: "!contains(matrix.target, 'musl')"
         run: |
           cd rust-pty
           cargo build --release --target ${{ matrix.target }}
