@@ -137,6 +137,10 @@ export class Terminal implements IPty {
 	private _readLoop = false;
 	private _closing = false;
 
+	// TextDecoder with streaming mode to properly handle UTF-8 across chunk boundaries
+	// Without this, multi-byte characters (like box-drawing ─) that span chunks become �
+	private readonly _decoder = new TextDecoder("utf-8");
+
 	private readonly _onData = new EventEmitter<string>();
 	private readonly _onExit = new EventEmitter<IExitEvent>();
 
@@ -227,14 +231,27 @@ export class Terminal implements IPty {
 		while (this._readLoop && !this._closing) {
 			const n = lib.symbols.bun_pty_read(this.handle, ptr(buf), buf.length);
 			if (n > 0) {
-				this._onData.fire(buf.subarray(0, n).toString("utf8"));
+				// Use streaming mode to buffer incomplete UTF-8 sequences across chunks
+				// This prevents corruption when multi-byte chars span chunk boundaries
+				const decoded = this._decoder.decode(buf.subarray(0, n), { stream: true });
+				if (decoded) {
+					this._onData.fire(decoded);
+				}
 			} else if (n === -2) {
-				// CHILD_EXITED
+				// CHILD_EXITED - flush any remaining bytes in the decoder
+				const remaining = this._decoder.decode();
+				if (remaining) {
+					this._onData.fire(remaining);
+				}
 				const exitCode = lib.symbols.bun_pty_get_exit_code(this.handle);
 				this._onExit.fire({ exitCode });
 				break;
 			} else if (n < 0) {
-				// error
+				// error - flush decoder before breaking
+				const remaining = this._decoder.decode();
+				if (remaining) {
+					this._onData.fire(remaining);
+				}
 				break;
 			} else {
 				// 0 bytes: wait
