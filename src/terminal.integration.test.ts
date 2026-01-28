@@ -507,6 +507,7 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     const { cmd, args } = echoCommand("sync test");
     console.log("[TEST] Starting terminal with command:", cmd, args);
     const terminal = new Terminal(cmd, args);
+    terminals.push(terminal);
 
     const exitPromise = new Promise<void>((resolve) => {
       terminal.onExit(() => {
@@ -527,7 +528,6 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     });
 
     await Promise.race([exitPromise, dataPromise]);
-    terminal.kill();
 
     expect(dataReceived).toContain("sync test");
   });
