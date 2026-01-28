@@ -172,7 +172,8 @@ export class Terminal implements IPty {
 		if (this.handle < 0) throw new Error("PTY spawn failed");
 
 		this._pid = lib.symbols.bun_pty_get_pid(this.handle);
-		this._startReadLoop();
+		// allow constructor to finish and caller to set up event listeners
+		queueMicrotask(() => this._startReadLoop());
 	}
 
 	/* ------------- accessors ------------- */

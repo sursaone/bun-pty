@@ -483,4 +483,52 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
 
     expect(dataReceived).toContain("HelloFromEnv");
   });
+
+  test("Terminal onData listener receives data when set immediately after construction", async () => {
+    const start = Date.now();
+    const maxRuntime = 4000;
+    let runnings = 1;
+    while (Date.now() - start < maxRuntime) {
+      console.log(`[TEST] Iteration ${runnings++}`);
+      const { success, stdout, stderr } = Bun.spawnSync({
+        cmd: ["bun", "test", "terminal.integration.test.ts", "--test-name-pattern", "Terminal sync tests"],
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, SYNC_TESTS: "1" },
+      });
+      expect(success, `stderr: ${stderr}`).toBe(true);
+    }
+  });
+
+  test.skipIf(!process.env.SYNC_TESTS)("Terminal sync tests", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const { cmd, args } = echoCommand("sync test");
+    console.log("[TEST] Starting terminal with command:", cmd, args);
+    const terminal = new Terminal(cmd, args);
+
+    const exitPromise = new Promise<void>((resolve) => {
+      terminal.onExit(() => {
+        console.log("[TEST] Process exited");
+        hasExited = true;
+        resolve();
+      });
+    });
+    const dataPromise = new Promise<void>((resolve) => {
+      terminal.onData((data) => {
+        console.log("[TEST] Received data:", data);
+        dataReceived += data;
+        if (dataReceived.includes("sync test"))
+          resolve();
+      });
+      const timeout = isWindows ? 5000 : 2000;
+      setTimeout(() => { resolve(); }, timeout); // Timeout to avoid hanging test
+    });
+
+    await Promise.race([exitPromise, dataPromise]);
+    terminal.kill();
+
+    expect(dataReceived).toContain("sync test");
+  });
 });
