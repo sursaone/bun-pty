@@ -25,6 +25,7 @@ jobs:
           - runner: windows-latest
             target: x86_64-pc-windows-gnu
 
+
     steps:
       - uses: actions/checkout@v4
 
@@ -80,3 +81,66 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: ignore
 
+  build-musl-lib:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install zigbuild
+        run: |
+          pip3 install ziglang
+          cargo install cargo-zigbuild
+
+      - name: Build Rust library (musl with zigbuild)
+        env:
+          RUSTFLAGS: -C target-feature=-crt-static
+        run: cd rust-pty && cargo zigbuild --release --target x86_64-unknown-linux-musl
+
+      - name: Upload musl library
+        uses: actions/upload-artifact@v4
+        with:
+          name: librust_pty_musl
+          path: rust-pty/target/x86_64-unknown-linux-musl/release/librust_pty.so
+
+  test-musl:
+    needs: build-musl-lib
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.23
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: apk add --no-cache bash curl libgcc libstdc++
+
+      - name: Download musl library
+        uses: actions/download-artifact@v4
+        with:
+          name: librust_pty_musl
+          path: rust-pty/target/release/
+
+      - name: Rename library to musl variant
+        run: mv rust-pty/target/release/librust_pty.so rust-pty/target/release/librust_pty_musl.so
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Install JS dependencies
+        run: $HOME/.bun/bin/bun install --ignore-scripts
+
+      - name: Run unit tests
+        run: $HOME/.bun/bin/bun run test:unit
+
+      - name: Run integration tests
+        run: $HOME/.bun/bin/bun run test:integration
+        env:
+          RUN_INTEGRATION_TESTS: true

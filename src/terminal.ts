@@ -5,7 +5,7 @@ import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
 import { join, dirname, basename } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 export const DEFAULT_COLS = 80;
 export const DEFAULT_ROWS = 24;
@@ -28,9 +28,20 @@ function shQuote(s: string): string {
 
 // terminal.ts  – loader fragment only
 
+function isMusl(): boolean {
+	if (process.platform !== "linux") return false;
+	try {
+		return readFileSync("/proc/self/maps", "utf8").includes("ld-musl");
+	} catch {
+		return false;
+	}
+}
+
 function resolveLibPath(): string {
 	const env = process.env.BUN_PTY_LIB;
 	if (env && existsSync(env)) return env;
+
+	const musl = isMusl();
 
 	// For bun compile: use statically analyzable require with inline ternary.
 	// Bun evaluates process.platform and process.arch at compile time and only
@@ -40,9 +51,22 @@ function resolveLibPath(): string {
 	try {
 		// @ts-ignore - require returns path for binary files in Bun
 		const embeddedPath = require(`../rust-pty/target/release/${process.platform === "win32" ? "rust_pty.dll" : process.platform === "darwin" ? (process.arch === "arm64" ? "librust_pty_arm64.dylib" : "librust_pty.dylib") : process.arch === "arm64" ? "librust_pty_arm64.so" : "librust_pty.so"}`);
-		if (embeddedPath) return embeddedPath;
+		if (embeddedPath && !musl) return embeddedPath;
 	} catch {
 		// Not running as compiled binary, fall through to dynamic resolution
+	}
+
+	// For bun compile on Linux musl: embed the musl-specific variant.
+	// The process.platform guard ensures Bun does not bundle Linux .so files
+	// into non-Linux compiled binaries.
+	if (process.platform === "linux") {
+		try {
+			// @ts-ignore - require returns path for binary files in Bun
+			const embeddedMuslPath = require(`../rust-pty/target/release/${process.arch === "arm64" ? "librust_pty_arm64_musl.so" : "librust_pty_musl.so"}`);
+			if (embeddedMuslPath && musl) return embeddedMuslPath;
+		} catch {
+			// Not running as compiled binary, fall through to dynamic resolution
+		}
 	}
 
 	// Fallback: dynamic resolution for development scenarios
@@ -57,6 +81,10 @@ function resolveLibPath(): string {
 				: ["librust_pty.dylib"]
 			: platform === "win32"
 			? ["rust_pty.dll"]
+			: musl
+			? arch === "arm64"
+				? ["librust_pty_arm64_musl.so", "librust_pty_musl.so", "librust_pty_arm64.so", "librust_pty.so"]
+				: ["librust_pty_musl.so", "librust_pty.so"]
 			: arch === "arm64"
 			? ["librust_pty_arm64.so", "librust_pty.so"]
 			: ["librust_pty.so"];

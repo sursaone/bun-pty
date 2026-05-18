@@ -27,6 +27,17 @@ jobs:
             target: aarch64-unknown-linux-gnu
             zigbuild_target: aarch64-unknown-linux-gnu.2.17
             out:    librust_pty_arm64.so
+          # musl builds (Alpine Linux and other musl-based distros)
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            zigbuild_target: x86_64-unknown-linux-musl
+            out:    librust_pty_musl.so
+            rustflags: -C target-feature=-crt-static
+          - runner: ubuntu-22.04
+            target: aarch64-unknown-linux-musl
+            zigbuild_target: aarch64-unknown-linux-musl
+            out:    librust_pty_arm64_musl.so
+            rustflags: -C target-feature=-crt-static
           - runner: macos-latest
             target: x86_64-apple-darwin
             out:    librust_pty.dylib
@@ -55,6 +66,8 @@ jobs:
 
       - name: Build rust-pty (Linux with zigbuild)
         if: matrix.zigbuild_target
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
           cd rust-pty
           cargo zigbuild --release --target ${{ matrix.zigbuild_target }}
