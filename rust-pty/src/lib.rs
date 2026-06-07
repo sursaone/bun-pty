@@ -211,6 +211,17 @@ impl Pty {
                     match rdr.read(&mut buf) {
                         Ok(0) => break,
                         Ok(n) => { let _ = tx.send(Msg::Data(buf[..n].to_vec())); }
+                        // FIX (bun-pty deaf-PTY bug): a transient read error
+                        // (EINTR from a signal, EWOULDBLOCK) must NOT be treated
+                        // as EOF. The old `Err(_) => break` ended the reader on
+                        // any error → Msg::End → exited=true → bun_pty_write
+                        // early-returns CHILD_EXITED forever, permanently deafening
+                        // input while the child is still alive. Retry instead.
+                        Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(2));
+                            continue;
+                        }
                         Err(_) => break,
                     }
                 }
