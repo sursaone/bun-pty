@@ -234,7 +234,24 @@ impl Pty {
             let mut wtr = master.lock().unwrap().take_writer()?;
             thread::spawn(move || {
                 while let Ok((data, len)) = rx_w.recv() {
-                    if wtr.write_all(&data[..len]).is_err() { break; }
+                    // Don't let one (possibly transient) write error kill the
+                    // writer thread forever — that would silently drop ALL
+                    // subsequent input. Retry transient errors; on a fatal one,
+                    // drop just this chunk but keep serving later writes.
+                    let mut buf = &data[..len];
+                    while !buf.is_empty() {
+                        match wtr.write(buf) {
+                            Ok(0) => break,
+                            Ok(n) => buf = &buf[n..],
+                            Err(ref e)
+                                if e.kind() == std::io::ErrorKind::Interrupted
+                                    || e.kind() == std::io::ErrorKind::WouldBlock =>
+                            {
+                                std::thread::sleep(std::time::Duration::from_millis(2));
+                            }
+                            Err(_) => break,
+                        }
+                    }
                     let _ = wtr.flush();
                 }
             });
