@@ -3,7 +3,7 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
-import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
+import type { IPty, IPtyForkOptions, IExitEvent, IPtyError } from "./interfaces";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -149,6 +149,11 @@ try {
 		bun_pty_kill: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_pid: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_exit_code: { args: [FFIType.i32], returns: FFIType.i32 },
+		bun_pty_status: { args: [FFIType.i32], returns: FFIType.i32 },
+		bun_pty_get_last_error: {
+			args: [FFIType.i32, FFIType.pointer, FFIType.i32],
+			returns: FFIType.i32,
+		},
 		bun_pty_close: { args: [FFIType.i32], returns: FFIType.void },
 	});
 } catch (error) {
@@ -171,6 +176,8 @@ export class Terminal implements IPty {
 
 	private readonly _onData = new EventEmitter<string>();
 	private readonly _onExit = new EventEmitter<IExitEvent>();
+	private readonly _onError = new EventEmitter<IPtyError>();
+	private _errorFired = false;
 
 	constructor(
 		file = DEFAULT_FILE,
@@ -225,6 +232,22 @@ export class Terminal implements IPty {
 	get onExit() {
 		return this._onExit.event;
 	}
+	get onError() {
+		return this._onError.event;
+	}
+
+	/** Fire onError once if a fatal transport error has been recorded. */
+	private _maybeFireError(): boolean {
+		if (this._errorFired) return false;
+		const ebuf = Buffer.allocUnsafe(512);
+		const en = lib.symbols.bun_pty_get_last_error(this.handle, ptr(ebuf), ebuf.length);
+		if (en > 0) {
+			this._errorFired = true;
+			this._onError.fire({ message: ebuf.toString("utf8", 0, en) });
+			return true;
+		}
+		return false;
+	}
 
 	/* ------------- IO methods ------------- */
 
@@ -272,6 +295,8 @@ export class Terminal implements IPty {
 				if (remaining) {
 					this._onData.fire(remaining);
 				}
+				// If the child died because the transport broke, surface the cause first.
+				this._maybeFireError();
 				const exitCode = lib.symbols.bun_pty_get_exit_code(this.handle);
 				this._onExit.fire({ exitCode });
 				break;
@@ -283,7 +308,11 @@ export class Terminal implements IPty {
 				}
 				break;
 			} else {
-				// 0 bytes: wait
+				// 0 bytes: surface a fatal transport error (e.g. write-side) that
+				// occurred while the child is still alive, then wait.
+				if (lib.symbols.bun_pty_status(this.handle) === 2 && this._maybeFireError()) {
+					break;
+				}
 				await new Promise((r) => setTimeout(r, 8));
 			}
 		}

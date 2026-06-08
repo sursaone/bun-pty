@@ -167,6 +167,7 @@ interface IPty {
   // Events
   onData: (listener: (data: string) => void) => IDisposable;
   onExit: (listener: (event: IExitEvent) => void) => IDisposable;
+  onError: (listener: (event: IPtyError) => void) => IDisposable;
   
   // Methods
   write(data: string): void;   // Write data to terminal
@@ -181,6 +182,12 @@ interface IPty {
 interface IExitEvent {
   exitCode: number;
   signal?: number | string;
+}
+
+// Emitted on a fatal PTY transport error (read/write) while the child may
+// still be alive — distinct from a clean exit. Opt-in.
+interface IPtyError {
+  message: string;
 }
 
 interface IDisposable {
