@@ -82,6 +82,15 @@ export interface IExitEvent {
 }
 
 /**
+ * Fatal PTY transport error (read/write) while the child may still be alive.
+ * Distinct from a clean exit (`IExitEvent`).
+ */
+export interface IPtyError {
+  /** Human-readable description of the error. */
+  message: string;
+}
+
+/**
  * Interface for interacting with a pseudo-terminal (PTY) instance.
  */
 export interface IPty {
@@ -114,6 +123,12 @@ export interface IPty {
    * Event emitted when the PTY process exits.
    */
   readonly onExit: (listener: (event: IExitEvent) => void) => IDisposable;
+
+  /**
+   * Event emitted when the PTY transport hits a fatal read/write error
+   * while the child may still be alive (distinct from `onExit`).
+   */
+  readonly onError: (listener: (event: IPtyError) => void) => IDisposable;
 
   /**
    * Write data to the PTY.

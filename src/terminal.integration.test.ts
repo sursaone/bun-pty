@@ -263,6 +263,31 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(event.exitCode).not.toBe(0);
   });
 
+  test.skipIf(isWindows)("Terminal does not fire onError on a clean exit (Unix)", async () => {
+    let exitEvent: IExitEvent | null = null;
+    let errorFired = false;
+
+    const terminal = new Terminal("sh", ["-c", "printf 'hi'; exit 0"]);
+    terminals.push(terminal);
+
+    terminal.onError(() => {
+      errorFired = true;
+    });
+    terminal.onExit((event) => {
+      exitEvent = event;
+    });
+
+    const start = Date.now();
+    while (!exitEvent && Date.now() - start < 3000) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    expect(exitEvent).not.toBeNull();
+    expect(exitEvent!.exitCode).toBe(0);
+    // onError is for fatal transport failures only — a clean exit must not trip it.
+    expect(errorFired).toBe(false);
+  });
+
   test.skipIf(isWindows)("Terminal handles large output without data loss (Unix)", async () => {
     let dataReceived = "";
     let hasExited = false;
