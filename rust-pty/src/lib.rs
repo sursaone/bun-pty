@@ -155,6 +155,14 @@ struct Pty {
     exit_code: AtomicI32,
     pid:    c_int,
     pending: Mutex<Vec<u8>>,               // NEW: stash bytes that didn't fit last time
+    // Observability generation (additive, opt-in): the existing read/write
+    // path is unchanged; these just record what happened so consumers can ask.
+    child_exited: AtomicBool,              // set when the child process actually exits
+    // Standalone Arc (NOT reached via Arc<Pty>) so the read/write threads can
+    // record errors without holding the whole Pty alive — holding Arc<Pty> in
+    // the write thread would keep `tx_w` from dropping, so its `rx_w.recv()`
+    // would block forever and leak the Pty + threads.
+    last_error: Arc<Mutex<Option<String>>>,
 }
 
 unsafe impl Send for Pty {}
@@ -173,6 +181,9 @@ impl Pty {
         let (tx_w, rx_w)   = unbounded::<(Vec<u8>, usize)>();
 
         let master = Arc::new(Mutex::new(pair.master));
+        // Shared error slot — cloned into the read/write threads (small Arc, not
+        // Arc<Pty>, so threads don't keep the Pty alive).
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
         let pty = Arc::new(Self {
             reader: Reader::new(rx_r),
@@ -184,6 +195,8 @@ impl Pty {
             exit_code: AtomicI32::new(-1),
             pid,
             pending: Mutex::new(Vec::new()),       // NEW: initialize empty pending buffer
+            child_exited: AtomicBool::new(false),  // child still running
+            last_error: last_error.clone(),        // shared error slot
         });
 
         /* wait-thread */
@@ -197,6 +210,7 @@ impl Pty {
                     debug(&format!("exit_status.exit_code(): {}", code));
                     pty_clone.exit_code.store(code, Ordering::Relaxed);
                 }
+                pty_clone.child_exited.store(true, Ordering::Relaxed);
                 let _ = tx.send(Msg::End);
             });
         }
@@ -205,6 +219,7 @@ impl Pty {
         {
             let mut rdr = master.lock().unwrap().try_clone_reader()?;
             let tx = tx_r.clone();
+            let last_error = last_error.clone();
             thread::spawn(move || {
                 let mut buf = vec![0; 8192];
                 loop {
@@ -222,7 +237,14 @@ impl Pty {
                             std::thread::sleep(std::time::Duration::from_millis(2));
                             continue;
                         }
-                        Err(_) => break,
+                        // Fatal read error: record the cause (observability gen)
+                        // before ending. The channel still gets Msg::End so the
+                        // existing read path is byte-for-byte unchanged.
+                        Err(e) => {
+                            debug(&format!("read error: {e}"));
+                            *last_error.lock().unwrap() = Some(format!("pty read: {e}"));
+                            break;
+                        }
                     }
                 }
                 let _ = tx.send(Msg::End);
@@ -232,6 +254,7 @@ impl Pty {
         /* write-thread  (length-aware) */
         {
             let mut wtr = master.lock().unwrap().take_writer()?;
+            let last_error = last_error.clone();
             thread::spawn(move || {
                 while let Ok((data, len)) = rx_w.recv() {
                     // Don't let one (possibly transient) write error kill the
@@ -249,7 +272,15 @@ impl Pty {
                             {
                                 std::thread::sleep(std::time::Duration::from_millis(2));
                             }
-                            Err(_) => break,
+                            // Fatal write error: record the cause (observability
+                            // gen) and drop this chunk — same control flow as
+                            // before, the writer keeps serving later writes.
+                            Err(e) => {
+                                debug(&format!("write error: {e}"));
+                                *last_error.lock().unwrap() =
+                                    Some(format!("pty write: {e}"));
+                                break;
+                            }
                         }
                     }
                     let _ = wtr.flush();
@@ -278,6 +309,20 @@ impl Pty {
     fn resize(&self, size: PtySize) -> c_int {
         if self.exited.load(Ordering::Relaxed) { return CHILD_EXITED; }
         self.master.lock().unwrap().resize(size).map(|_| SUCCESS).unwrap_or(ERROR)
+    }
+    /// Observability generation: queryable health.
+    /// 0 = RUNNING, 1 = EXITED (clean), 2 = PTY_ERROR (fatal transport error).
+    /// A transport error takes precedence — the child may be exiting *because*
+    /// the transport broke, and the broken transport is what the caller needs
+    /// to act on.
+    fn status(&self) -> c_int {
+        if self.last_error.lock().unwrap().is_some() {
+            2
+        } else if self.child_exited.load(Ordering::Relaxed) {
+            1
+        } else {
+            0
+        }
     }
     fn kill(&self) -> c_int {
         let res = self.killer.lock().map(|mut k| k.kill());
@@ -401,6 +446,40 @@ pub extern "C" fn bun_pty_get_pid(handle: c_int) -> c_int {
 pub extern "C" fn bun_pty_get_exit_code(handle: c_int) -> c_int {
     if handle <= 0 { return ERROR; }
     with(handle as u32, |p| p.exit_code.load(Ordering::Relaxed))
+}
+
+/* ---------- observability generation (additive, opt-in) ---------- */
+
+/// Queryable health for the PTY. Existing `bun_pty_read`/`write` are unchanged;
+/// this lets a consumer distinguish a clean exit from a broken transport.
+/// Returns: 0 = RUNNING, 1 = EXITED, 2 = PTY_ERROR, or ERROR (-1) on bad handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn bun_pty_status(handle: c_int) -> c_int {
+    if handle <= 0 { return ERROR; }
+    with(handle as u32, |p| p.status())
+}
+
+/// Copy the last fatal PTY transport error message into `buf` (up to `len`
+/// bytes). Returns the number of bytes written, or 0 if there is none.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bun_pty_get_last_error(
+    handle: c_int,
+    buf:    *mut u8,
+    len:    c_int,
+) -> c_int {
+    if handle <= 0 || buf.is_null() || len <= 0 { return ERROR; }
+    with(handle as u32, |pty| {
+        let guard = pty.last_error.lock().unwrap();
+        match guard.as_ref() {
+            Some(s) => {
+                let bytes = s.as_bytes();
+                let n = bytes.len().min(len as usize);
+                unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, n); }
+                n as c_int
+            }
+            None => 0,
+        }
+    })
 }
 
 #[unsafe(no_mangle)]
