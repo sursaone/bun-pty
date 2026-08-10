@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Spawn a bare command name even when a same-named directory exists in the cwd
+  - Bump `portable-pty` to 0.9.0, whose `search_path` now skips non-executable candidates (including directories) instead of blindly accepting `cwd/<command>` just because it exists.
+  - Previously, spawning e.g. `cmake` from a project that contains a `cmake/` directory resolved to that directory, so the child tried to exec a directory and either aborted with `fatal runtime error: assertion failed: output.write(&bytes).is_ok()` or surfaced as `PTY spawn failed`.
+
 ## [0.4.10] - 2026-06-15
 
 ### Added
