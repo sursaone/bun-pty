@@ -47,6 +47,10 @@ jobs:
           - runner: windows-latest
             target: x86_64-pc-windows-gnu
             out:    rust_pty.dll
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            out:    rust_pty_arm64.dll
+            rustflags: -C target-feature=+crt-static
 
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +78,8 @@ jobs:
 
       - name: Build rust-pty
         if: "!matrix.zigbuild_target"
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
           cd rust-pty
           cargo build --release --target ${{ matrix.target }}

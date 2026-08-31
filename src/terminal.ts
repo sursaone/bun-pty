@@ -4,6 +4,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
+import { libraryFilenames } from "./library";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -50,7 +51,7 @@ function resolveLibPath(): string {
 	// See: https://github.com/sursaone/bun-pty/issues/19
 	try {
 		// @ts-ignore - require returns path for binary files in Bun
-		const embeddedPath = require(`../rust-pty/target/release/${process.platform === "win32" ? "rust_pty.dll" : process.platform === "darwin" ? (process.arch === "arm64" ? "librust_pty_arm64.dylib" : "librust_pty.dylib") : process.arch === "arm64" ? "librust_pty_arm64.so" : "librust_pty.so"}`);
+		const embeddedPath = require(`../rust-pty/target/release/${process.platform === "win32" ? (process.arch === "arm64" ? "rust_pty_arm64.dll" : "rust_pty.dll") : process.platform === "darwin" ? (process.arch === "arm64" ? "librust_pty_arm64.dylib" : "librust_pty.dylib") : process.arch === "arm64" ? "librust_pty_arm64.so" : "librust_pty.so"}`);
 		if (embeddedPath && !musl) return embeddedPath;
 	} catch {
 		// Not running as compiled binary, fall through to dynamic resolution
@@ -74,20 +75,7 @@ function resolveLibPath(): string {
 	const arch = process.arch;
 
 	// Try both architecture-specific and generic filenames
-	const filenames =
-		platform === "darwin"
-			? arch === "arm64"
-				? ["librust_pty_arm64.dylib", "librust_pty.dylib"]
-				: ["librust_pty.dylib"]
-			: platform === "win32"
-			? ["rust_pty.dll"]
-			: musl
-			? arch === "arm64"
-				? ["librust_pty_arm64_musl.so", "librust_pty_musl.so", "librust_pty_arm64.so", "librust_pty.so"]
-				: ["librust_pty_musl.so", "librust_pty.so"]
-			: arch === "arm64"
-			? ["librust_pty_arm64.so", "librust_pty.so"]
-			: ["librust_pty.so"];
+	const filenames = libraryFilenames(platform, arch, musl);
 
 	// Start from the current module's location
 	const base = Bun.fileURLToPath(import.meta.url);

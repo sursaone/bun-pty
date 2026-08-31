@@ -32,7 +32,7 @@ bun add bun-pty
 |----------|--------|-------|
 | macOS    | ✅     | Fully supported |
 | Linux    | ✅     | Fully supported |
-| Windows  | ✅     | Fully supported |
+| Windows (x64, ARM64) | ✅ | Fully supported |
 
 ## 🚦 Usage
 

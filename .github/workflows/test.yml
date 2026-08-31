@@ -24,7 +24,9 @@ jobs:
             target: aarch64-apple-darwin
           - runner: windows-latest
             target: x86_64-pc-windows-gnu
-
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            rustflags: -C target-feature=+crt-static
 
     steps:
       - uses: actions/checkout@v4
@@ -55,12 +57,21 @@ jobs:
 
       - name: Build Rust library
         if: "!matrix.zigbuild_target"
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
           cd rust-pty
           cargo build --release --target ${{ matrix.target }}
 
       - name: Install dependencies
         run: bun install
+
+      - name: Prepare Windows ARM64 library
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          Copy-Item rust-pty/target/${{ matrix.target }}/release/rust_pty.dll rust-pty/target/release/rust_pty_arm64.dll
+          Remove-Item rust-pty/target/release/rust_pty.dll
 
       - name: Run unit tests
         run: bun run test:unit
@@ -72,6 +83,13 @@ jobs:
         run: bun run test:integration
         env:
           RUN_INTEGRATION_TESTS: true
+
+      - name: Test compiled Windows ARM64 binary
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          bun build --compile --target=bun-windows-arm64 .github/scripts/windows-arm64-compile-smoke.ts --outfile "$env:RUNNER_TEMP/bun-pty-windows-arm64-smoke.exe"
+          & "$env:RUNNER_TEMP/bun-pty-windows-arm64-smoke.exe"
 
       - name: Upload coverage to artifacts
         if: always()
