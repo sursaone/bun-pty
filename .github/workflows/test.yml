@@ -24,7 +24,8 @@ jobs:
             target: aarch64-apple-darwin
           - runner: windows-latest
             target: x86_64-pc-windows-gnu
-
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +62,13 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Prepare Windows ARM64 library
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          Copy-Item rust-pty/target/${{ matrix.target }}/release/rust_pty.dll rust-pty/target/release/rust_pty_arm64.dll
+          Remove-Item rust-pty/target/release/rust_pty.dll
 
       - name: Run unit tests
         run: bun run test:unit
