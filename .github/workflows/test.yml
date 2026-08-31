@@ -81,6 +81,13 @@ jobs:
         env:
           RUN_INTEGRATION_TESTS: true
 
+      - name: Test compiled Windows ARM64 binary
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          bun build --compile --target=bun-windows-arm64 .github/scripts/windows-arm64-compile-smoke.ts --outfile "$env:RUNNER_TEMP/bun-pty-windows-arm64-smoke.exe"
+          & "$env:RUNNER_TEMP/bun-pty-windows-arm64-smoke.exe"
+
       - name: Upload coverage to artifacts
         if: always()
         uses: actions/upload-artifact@v4
