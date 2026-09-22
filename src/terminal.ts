@@ -149,15 +149,43 @@ try {
 		bun_pty_kill: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_pid: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_exit_code: { args: [FFIType.i32], returns: FFIType.i32 },
+		bun_pty_close: { args: [FFIType.i32], returns: FFIType.void },
+	});
+} catch (error) {
+	console.error("Failed to load lib", error);
+}
+
+// The observability symbols are loaded on their own: `dlopen` fails for the
+// WHOLE map when one symbol is missing, and a user pointing BUN_PTY_LIB at a
+// library built before this feature would otherwise lose the PTY entirely.
+// Absent them, `status` reads RUNNING and `onError` simply never fires.
+// biome-ignore lint/suspicious/noExplicitAny: matches `lib` above.
+let observability: any;
+try {
+	observability = dlopen(libPath, {
 		bun_pty_status: { args: [FFIType.i32], returns: FFIType.i32 },
 		bun_pty_get_last_error: {
 			args: [FFIType.i32, FFIType.pointer, FFIType.i32],
 			returns: FFIType.i32,
 		},
-		bun_pty_close: { args: [FFIType.i32], returns: FFIType.void },
 	});
-} catch (error) {
-	console.error("Failed to load lib", error);
+} catch {
+	observability = undefined;
+}
+
+const PTY_STATUS_RUNNING = 0;
+const PTY_STATUS_ERROR = 2;
+
+/** The child's transport state, or RUNNING when the library predates it. */
+function ptyStatus(handle: number): number {
+	return observability ? observability.symbols.bun_pty_status(handle) : PTY_STATUS_RUNNING;
+}
+
+/** Copy the last fatal error into `buf`; 0 when there is none (or no support). */
+function ptyLastError(handle: number, buf: Buffer): number {
+	return observability
+		? observability.symbols.bun_pty_get_last_error(handle, ptr(buf), buf.length)
+		: 0;
 }
 
 export class Terminal implements IPty {
@@ -240,7 +268,7 @@ export class Terminal implements IPty {
 	private _maybeFireError(): boolean {
 		if (this._errorFired) return false;
 		const ebuf = Buffer.allocUnsafe(512);
-		const en = lib.symbols.bun_pty_get_last_error(this.handle, ptr(ebuf), ebuf.length);
+		const en = ptyLastError(this.handle, ebuf);
 		if (en > 0) {
 			this._errorFired = true;
 			this._onError.fire({ message: ebuf.toString("utf8", 0, en) });
@@ -309,9 +337,12 @@ export class Terminal implements IPty {
 				break;
 			} else {
 				// 0 bytes: surface a fatal transport error (e.g. write-side) that
-				// occurred while the child is still alive, then wait.
-				if (lib.symbols.bun_pty_status(this.handle) === 2 && this._maybeFireError()) {
-					break;
+				// occurred while the child is still alive, then keep polling —
+				// PTY_ERROR says the transport broke, not that the child is gone,
+				// and `n === -2` below is the only path that fires `onExit`.
+				// `_maybeFireError` latches, so this reports once.
+				if (ptyStatus(this.handle) === PTY_STATUS_ERROR) {
+					this._maybeFireError();
 				}
 				await new Promise((r) => setTimeout(r, 8));
 			}
