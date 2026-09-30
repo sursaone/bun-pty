@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] - 2026-09-30
+
+### Added
+- Native Windows ARM64 support (#46)
+  - Ship a pre-built `rust_pty_arm64.dll` (built on GitHub's `windows-11-arm` runner for `aarch64-pc-windows-msvc`) alongside the existing x64 `rust_pty.dll`, whose filename is unchanged
+  - Link the MSVC runtime statically (`-C target-feature=+crt-static`) to avoid a Visual C++ Redistributable dependency
+  - Select the ARM64 DLL at runtime and in the `bun build --compile` embed path, falling back to `rust_pty.dll`
+  - Move native library filename resolution into `src/library.ts` with unit tests
+  - Add a `windows-11-arm` job to the test matrix that runs the unit and integration tests against the exact ARM64 artifact
+
 ## [0.4.10] - 2026-06-15
 
 ### Added
