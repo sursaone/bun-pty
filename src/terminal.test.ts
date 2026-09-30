@@ -1,6 +1,20 @@
 import { expect, test, describe } from "bun:test";
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_FILE, DEFAULT_NAME } from "./terminal";
 import type { IPtyForkOptions, IExitEvent } from "./interfaces";
+import { libraryFilenames } from "./library";
+
+describe("native library resolution", () => {
+	test("prefers the ARM64 DLL on Windows ARM64", () => {
+		expect(libraryFilenames("win32", "arm64", false)).toEqual([
+			"rust_pty_arm64.dll",
+			"rust_pty.dll",
+		]);
+	});
+
+	test("keeps the generic DLL name on Windows x64", () => {
+		expect(libraryFilenames("win32", "x64", false)).toEqual(["rust_pty.dll"]);
+	});
+});
 
 describe("Terminal configuration and options", () => {
 	describe("default values", () => {
@@ -394,4 +408,3 @@ describe("Terminal constants", () => {
 		expect(DEFAULT_NAME).toBe("xterm");
 	});
 });
-
