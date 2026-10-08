@@ -452,6 +452,75 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(dataReceived).toContain("Hello from PowerShell");
   }, 15000);
 
+  test.skipIf(isWindows)("Terminal replaces the parent environment with a supplied env map", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const terminal = new Terminal("/usr/bin/env", [], {
+      name: "xterm",
+      env: {
+        BUN_PTY_ONLY: "from-map",
+      },
+    });
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const names = dataReceived
+      .split(/\r?\n/)
+      .filter((line) => line.includes("="))
+      .map((line) => line.slice(0, line.indexOf("=")))
+      .sort();
+
+    // portable-pty adds SHELL when the map holds none
+    expect(names).toEqual(["BUN_PTY_ONLY", "SHELL"]);
+    expect(dataReceived).toContain("BUN_PTY_ONLY=from-map");
+  });
+
+  test.skipIf(isWindows)("Terminal passes the current process.env when no env map is supplied", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    process.env.BUN_PTY_RUNTIME = "set-at-runtime";
+    const terminal = new Terminal("sh", ["-c", "echo \"RUNTIME:[$BUN_PTY_RUNTIME]\""]);
+    delete process.env.BUN_PTY_RUNTIME;
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(dataReceived).toContain("RUNTIME:[set-at-runtime]");
+  });
+
   // Windows-specific: Test environment variables
   test.skipIf(!isWindows)("Terminal passes environment variables on Windows", async () => {
     let dataReceived = "";

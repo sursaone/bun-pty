@@ -92,6 +92,11 @@ impl Command {
 
     fn to_builder(&self) -> CommandBuilder {
         let mut b = CommandBuilder::new(&self.cmd);
+        // `CommandBuilder::new` seeds the environment from the parent's
+        // startup environment. The map the caller passed is the whole
+        // environment, as in node-pty, so drop the seeded one first.
+        // portable-pty still sets SHELL when the map holds no usable one.
+        b.env_clear();
         b.cwd(&self.cwd);
         for a in &self.args {
             b.arg(a);
