@@ -525,7 +525,7 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     let dataReceived = "";
     let hasExited = false;
 
-    const terminal = new Terminal("sh", ["-c", "echo \"PATH:[$PATH] ONLY:[$BUN_PTY_ONLY]\""], {
+    const terminal = new Terminal("env", [], {
       env: {
         BUN_PTY_ONLY: "from-map",
       },
@@ -549,9 +549,14 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    // The parent's PATH finds `sh`, but does not reach the child
-    expect(dataReceived).toContain("ONLY:[from-map]");
-    expect(dataReceived).not.toContain(process.env.PATH!);
+    const names = dataReceived
+      .split(/\r?\n/)
+      .filter((line) => line.includes("="))
+      .map((line) => line.slice(0, line.indexOf("=")))
+      .sort();
+
+    // The parent's PATH finds `env`, but does not reach the child
+    expect(names).toEqual(["BUN_PTY_ONLY", "SHELL"]);
   });
 
   // Windows-specific: Test environment variables
@@ -587,6 +592,37 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(dataReceived).toContain("HelloFromEnv");
+  });
+
+  // Windows-specific: an empty env map keeps the parent environment, as in node-pty
+  test.skipIf(!isWindows)("Terminal keeps the parent environment for an empty env map on Windows", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const terminal = new Terminal("cmd.exe", ["/c", "echo ROOT:[%SystemRoot%]"], {
+      name: "xterm",
+      env: {},
+    });
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(dataReceived).toContain(`ROOT:[${process.env.SystemRoot}]`);
   });
 
   test("Terminal onData listener receives data when set immediately after construction", async () => {

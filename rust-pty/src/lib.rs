@@ -98,6 +98,15 @@ impl Command {
         // environment, as in node-pty, so drop the seeded one first.
         // portable-pty still sets SHELL when the map holds no usable one.
         b.env_clear();
+        // On Windows an empty map keeps the parent's environment, as in
+        // node-pty; portable-pty would build an unterminated block for it.
+        // Copy the process environment, not portable-pty's seeded one,
+        // which also applies values from the registry.
+        if cfg!(windows) && self.env.is_empty() {
+            for (k, v) in std::env::vars_os() {
+                b.env(k, v);
+            }
+        }
         b.cwd(&self.cwd);
         for a in &self.args {
             b.arg(a);
