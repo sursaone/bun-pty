@@ -8,9 +8,10 @@ use serde::{Deserialize, Serialize};
 use shell_words::split;                  // <-- NEW
 use std::{
     collections::HashMap,
-    ffi::CStr,
+    ffi::{CStr, OsStr, OsString},
     io::{Read, Write},
     os::raw::{c_char, c_int},
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicI32, Ordering},
         Arc, Mutex,
@@ -91,7 +92,7 @@ impl Command {
     }
 
     fn to_builder(&self) -> CommandBuilder {
-        let mut b = CommandBuilder::new(&self.cmd);
+        let mut b = CommandBuilder::new(self.program());
         // `CommandBuilder::new` seeds the environment from the parent's
         // startup environment. The map the caller passed is the whole
         // environment, as in node-pty, so drop the seeded one first.
@@ -105,6 +106,71 @@ impl Command {
             b.env(k, v);
         }
         b
+    }
+
+    /// The map's value for `key`. Windows matches the key without case.
+    fn map_var(&self, key: &str) -> Option<&str> {
+        self.env
+            .iter()
+            .find(|(k, _)| if cfg!(windows) { k.eq_ignore_ascii_case(key) } else { k.as_str() == key })
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// portable-pty looks up a relative program with the PATH in the
+    /// child's environment. Before `env_clear()`, a map with no PATH fell
+    /// back to the parent's PATH. Keep that fallback, so a bare name such
+    /// as `sh` or `cmd.exe` still resolves, without adding PATH to the child.
+    fn program(&self) -> OsString {
+        if self.cmd.is_empty() || self.map_var("PATH").is_some() {
+            return self.cmd.clone().into();
+        }
+        std::env::var_os("PATH")
+            .and_then(|path| self.search_path(&path))
+            .map_or_else(|| self.cmd.clone().into(), PathBuf::into_os_string)
+    }
+
+    /// Mirrors portable-pty's Unix lookup: a relative program found in the
+    /// cwd stays as it is, else the first executable match in `path`.
+    #[cfg(unix)]
+    fn search_path(&self, path: &OsStr) -> Option<PathBuf> {
+        use std::{os::unix::fs::PermissionsExt, path::Path};
+
+        let exe = Path::new(&self.cmd);
+        if exe.is_absolute() || Path::new(&self.cwd).join(exe).exists() {
+            return None;
+        }
+        std::env::split_paths(path).map(|dir| dir.join(exe)).find(|candidate| {
+            candidate
+                .metadata()
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+    }
+
+    /// Mirrors portable-pty's Windows lookup: each `path` entry with the
+    /// name as given, then with each PATHEXT extension.
+    #[cfg(windows)]
+    fn search_path(&self, path: &OsStr) -> Option<PathBuf> {
+        let pathext = self
+            .map_var("PATHEXT")
+            .map(OsString::from)
+            .or_else(|| std::env::var_os("PATHEXT"))
+            .unwrap_or_else(|| ".EXE".into());
+        for dir in std::env::split_paths(path) {
+            let candidate = dir.join(&self.cmd);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            for ext in std::env::split_paths(&pathext) {
+                let Some(ext) = ext.to_str().and_then(|e| e.strip_prefix('.')) else {
+                    continue;
+                };
+                let candidate = dir.join(&self.cmd).with_extension(ext);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
     }
 }
 

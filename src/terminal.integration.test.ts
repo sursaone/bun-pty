@@ -521,6 +521,39 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(dataReceived).toContain("RUNTIME:[set-at-runtime]");
   });
 
+  test.skipIf(isWindows)("Terminal finds a bare program name when the env map has no PATH", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const terminal = new Terminal("sh", ["-c", "echo \"PATH:[$PATH] ONLY:[$BUN_PTY_ONLY]\""], {
+      env: {
+        BUN_PTY_ONLY: "from-map",
+      },
+    });
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // The parent's PATH finds `sh`, but does not reach the child
+    expect(dataReceived).toContain("ONLY:[from-map]");
+    expect(dataReceived).not.toContain(process.env.PATH!);
+  });
+
   // Windows-specific: Test environment variables
   test.skipIf(!isWindows)("Terminal passes environment variables on Windows", async () => {
     let dataReceived = "";
