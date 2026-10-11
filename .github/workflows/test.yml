@@ -77,7 +77,7 @@ jobs:
         run: bun run test:unit
 
       - name: Run unit tests with coverage
-        run: bun test --coverage --coverage-reporter=lcov src/interfaces.test.ts src/terminal.test.ts src/index.test.ts
+        run: bun test --coverage --coverage-reporter=lcov src/interfaces.test.ts src/terminal.test.ts src/index.test.ts src/env.test.ts
 
       - name: Run integration tests
         run: bun run test:integration

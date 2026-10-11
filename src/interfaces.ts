@@ -40,9 +40,10 @@ export class EventEmitter<T> {
  */
 export interface IPtyForkOptions {
   /**
-   * The name of the terminal to be set in environment variables.
+   * The terminal type, set as TERM in the child's environment on Unix.
+   * Defaults to TERM from the environment, then "xterm".
    */
-  name: string;
+  name?: string;
 
   /**
    * The number of columns in the PTY.
@@ -61,9 +62,12 @@ export interface IPtyForkOptions {
   cwd?: string;
 
   /**
-   * Environment variables to set for the process.
+   * The child's whole environment, as in node-pty: it replaces the parent's
+   * environment instead of adding to it, so pass
+   * `{ ...process.env, FOO: "bar" }` to add variables. Entries whose value
+   * is undefined are skipped. Defaults to `process.env`.
    */
-  env?: Record<string, string>;
+  env?: Record<string, string | undefined>;
 }
 
 /**

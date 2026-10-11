@@ -487,9 +487,10 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
       .map((line) => line.slice(0, line.indexOf("=")))
       .sort();
 
-    // portable-pty adds SHELL when the map holds none
-    expect(names).toEqual(["BUN_PTY_ONLY", "SHELL"]);
+    // portable-pty adds SHELL when the map holds none; PWD and TERM come from cwd and name
+    expect(names).toEqual(["BUN_PTY_ONLY", "PWD", "SHELL", "TERM"]);
     expect(dataReceived).toContain("BUN_PTY_ONLY=from-map");
+    expect(dataReceived).toContain("TERM=xterm");
   });
 
   test.skipIf(isWindows)("Terminal passes the current process.env when no env map is supplied", async () => {
@@ -519,6 +520,67 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(dataReceived).toContain("RUNTIME:[set-at-runtime]");
+  });
+
+  test.skipIf(isWindows)("Terminal sets TERM from name and PWD from cwd", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const terminal = new Terminal("sh", ["-c", "echo \"TERM:[$TERM] PWD:[$PWD]\""], {
+      name: "xterm-256color",
+      cwd: "/",
+    });
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(dataReceived).toContain("TERM:[xterm-256color] PWD:[/]");
+  });
+
+  test.skipIf(isWindows)("Terminal drops the parent's tmux variables when the child inherits process.env", async () => {
+    let dataReceived = "";
+    let hasExited = false;
+
+    const previous = process.env.TMUX;
+    process.env.TMUX = "/tmp/tmux-bun-pty/default,1,0";
+    const terminal = new Terminal("sh", ["-c", "echo \"TMUX:[$TMUX]\""]);
+    if (previous === undefined) delete process.env.TMUX;
+    else process.env.TMUX = previous;
+    terminals.push(terminal);
+
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    terminal.onExit(() => {
+      hasExited = true;
+    });
+
+    const timeout = 5000;
+    const start = Date.now();
+
+    while (!hasExited && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(dataReceived).toContain("TMUX:[]");
   });
 
   test.skipIf(isWindows)("Terminal finds a bare program name when the env map has no PATH", async () => {
@@ -556,7 +618,7 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
       .sort();
 
     // The parent's PATH finds `env`, but does not reach the child
-    expect(names).toEqual(["BUN_PTY_ONLY", "SHELL"]);
+    expect(names).toEqual(["BUN_PTY_ONLY", "PWD", "SHELL", "TERM"]);
   });
 
   // Windows-specific: Test environment variables
