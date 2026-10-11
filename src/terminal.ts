@@ -171,12 +171,14 @@ export class Terminal implements IPty {
 		// Properly quote file and arguments to preserve spaces and special characters
 		const cmdline = [shQuote(file), ...args.map(shQuote)].join(" ");
 
-		// Format environment variables as null-terminated string
-		let envStr = "";
-		if (opts.env) {
-			const envPairs = Object.entries(opts.env).map(([k, v]) => `${k}=${v}`);
-			envStr = envPairs.join("\0") + "\0";
-		}
+		// Format environment variables as null-terminated string. The map
+		// replaces the child's environment, so without one the child gets
+		// this process's current environment, as in node-pty.
+		const env = opts.env ?? process.env;
+		const envPairs = Object.entries(env)
+			.filter((entry): entry is [string, string] => entry[1] !== undefined)
+			.map(([k, v]) => `${k}=${v}`);
+		const envStr = envPairs.length > 0 ? envPairs.join("\0") + "\0" : "";
 
 		this.handle = lib.symbols.bun_pty_spawn(
 			Buffer.from(`${cmdline}\0`, "utf8"),
