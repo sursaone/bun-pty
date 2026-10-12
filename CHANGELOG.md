@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-10-12
+
+### Fixed
+- Leave the `src/*.test.ts` files out of the npm package (#50)
+  - `"files"` in `package.json` lists all of `src`, and npm does not apply `.npmignore` patterns to the paths it lists, so earlier tarballs included the tests
+
 ## [0.5.0] - 2026-10-12
 
 ### Changed
