@@ -5,13 +5,14 @@ import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
 import { libraryFilenames } from "./library";
+import { DEFAULT_NAME, childEnv, formatEnv } from "./env";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
 export const DEFAULT_COLS = 80;
 export const DEFAULT_ROWS = 24;
 export const DEFAULT_FILE = "sh";
-export const DEFAULT_NAME = "xterm";
+export { DEFAULT_NAME };
 
 /**
  * Quote a string for shell-words compatible splitting on the Rust side.
@@ -163,7 +164,7 @@ export class Terminal implements IPty {
 	constructor(
 		file = DEFAULT_FILE,
 		args: string[] = [],
-		opts: IPtyForkOptions = { name: DEFAULT_NAME },
+		opts: IPtyForkOptions = {},
 	) {
 		this._cols = opts.cols ?? DEFAULT_COLS;
 		this._rows = opts.rows ?? DEFAULT_ROWS;
@@ -171,14 +172,8 @@ export class Terminal implements IPty {
 		// Properly quote file and arguments to preserve spaces and special characters
 		const cmdline = [shQuote(file), ...args.map(shQuote)].join(" ");
 
-		// Format environment variables as null-terminated string. The map
-		// replaces the child's environment, so without one the child gets
-		// this process's current environment, as in node-pty.
-		const env = opts.env ?? process.env;
-		const envPairs = Object.entries(env)
-			.filter((entry): entry is [string, string] => entry[1] !== undefined)
-			.map(([k, v]) => `${k}=${v}`);
-		const envStr = envPairs.length > 0 ? envPairs.join("\0") + "\0" : "";
+		// The child's whole environment, built as node-pty builds it
+		const envStr = formatEnv(childEnv(opts, cwd));
 
 		this.handle = lib.symbols.bun_pty_spawn(
 			Buffer.from(`${cmdline}\0`, "utf8"),
