@@ -65,7 +65,8 @@ export interface IPtyForkOptions {
    * The child's whole environment, as in node-pty: it replaces the parent's
    * environment instead of adding to it, so pass
    * `{ ...process.env, FOO: "bar" }` to add variables. Entries whose value
-   * is undefined are skipped. Defaults to `process.env`.
+   * is undefined are skipped. On Windows, a map with no entries keeps the
+   * parent's environment, as in node-pty. Defaults to `process.env`.
    */
   env?: Record<string, string | undefined>;
 }

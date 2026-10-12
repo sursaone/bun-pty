@@ -150,7 +150,7 @@ Creates and spawns a new pseudoterminal.
   - `cols`: Number of columns (default: 80)
   - `rows`: Number of rows (default: 24)
   - `cwd`: Working directory (default: process.cwd())
-  - `env`: The child's whole environment, as in node-pty (default: `process.env`). It replaces the parent's environment, so pass `{ ...process.env, FOO: "bar" }` to add variables. On Unix, `PWD` is set from `cwd`, and when the child inherits `process.env`, variables from the parent's tmux or screen session (`TMUX`, `STY`, ...) are dropped
+  - `env`: The child's whole environment, as in node-pty (default: `process.env`). It replaces the parent's environment, so pass `{ ...process.env, FOO: "bar" }` to add variables. Entries whose value is `undefined` are skipped. On Windows, a map with no entries keeps the parent's environment, as in node-pty. On Unix, `PWD` is set from `cwd`, and when the child inherits `process.env`, variables from the parent's tmux or screen session (`TMUX`, `STY`, ...) are dropped
 
 Returns an `IPty` instance.
 
