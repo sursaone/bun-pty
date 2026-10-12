@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-12
+
+### Changed
+- **Breaking:** `env` is now the child's whole environment, as in node-pty, instead of being merged over the parent's (#48)
+  - To keep inherited variables, spread `process.env`: `env: { ...process.env, FOO: "bar" }`
+  - Without `env`, the child gets the current `process.env`, so changes made at runtime reach it (before, it got the environment the process started with)
+  - When the map has no `PATH`, a bare program name such as `sh` is still found with the parent's `PATH`, which does not reach the child; on Unix, `argv[0]` is then the resolved path
+  - On Windows, a map with no entries keeps the parent's environment, as in node-pty
+- On Unix, the child's environment is now built as node-pty builds it (#49)
+  - `TERM` is set from the `name` option, then from `TERM` in the environment, then "xterm"; `name` was ignored before
+  - `PWD` is set from `cwd`
+  - When the child inherits `process.env`, the parent's tmux and screen variables (`TMUX`, `TMUX_PANE`, `STY`, `WINDOW`, `WINDOWID`, `TERMCAP`) and its `COLUMNS` and `LINES` are dropped
+- `IPtyForkOptions.name` is optional, and `env` accepts `undefined` values, which are skipped, so `env: process.env` type-checks (#49)
+
+### Fixed
+- Variables left out of `env`, such as tokens, no longer reach the child (#48)
+  - Fixes #47
+
 ## [0.4.11] - 2026-09-30
 
 ### Added
