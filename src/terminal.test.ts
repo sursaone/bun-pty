@@ -35,7 +35,12 @@ describe("native library load failure", () => {
 		});
 		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 		expect(exitCode).toBe(0);
-		expect(stdout).toContain(`Error bun-pty could not load its native library at ${notALibrary}:`);
+		const prefix = `Error bun-pty could not load its native library at ${notALibrary}: `;
+		const line = stdout.trim();
+		expect(line.startsWith(prefix)).toBe(true);
+		const cause = line.slice(prefix.length);
+		expect(cause).not.toBe("");
+		expect(cause).not.toBe("undefined");
 	});
 });
 
