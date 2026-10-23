@@ -1,4 +1,7 @@
 import { expect, test, describe } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_FILE, DEFAULT_NAME } from "./terminal";
 import type { IPtyForkOptions, IExitEvent } from "./interfaces";
 import { libraryFilenames } from "./library";
@@ -13,6 +16,26 @@ describe("native library resolution", () => {
 
 	test("keeps the generic DLL name on Windows x64", () => {
 		expect(libraryFilenames("win32", "x64", false)).toEqual(["rust_pty.dll"]);
+	});
+});
+
+describe("native library load failure", () => {
+	test("importing still works and spawn() reports the dlopen cause", async () => {
+		const notALibrary = join(mkdtempSync(join(tmpdir(), "bun-pty-")), "not-a-library.txt");
+		writeFileSync(notALibrary, "not a shared library");
+		const script = `
+			const { Terminal } = await import(${JSON.stringify(join(import.meta.dir, "terminal.ts"))});
+			try { new Terminal("sh"); console.log("spawned"); }
+			catch (e) { console.log(e instanceof TypeError ? "TypeError" : "Error", e.message.split("\\n")[0]); }
+		`;
+		const proc = Bun.spawn([process.execPath, "-e", script], {
+			env: { ...process.env, BUN_PTY_LIB: notALibrary },
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain(`Error bun-pty could not load its native library at ${notALibrary}:`);
 	});
 });
 

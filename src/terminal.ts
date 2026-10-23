@@ -111,7 +111,7 @@ function resolveLibPath(): string {
 	);
 }
 
-const libPath = resolveLibPath();
+let libPath: string | undefined;
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 let lib: any;
@@ -124,6 +124,7 @@ let libLoadError: unknown;
 // surfaces as a clear error from spawn() instead of
 // "undefined is not an object (evaluating 'lib.symbols')" deep in a spawn.
 try {
+	libPath = resolveLibPath();
 	lib = dlopen(libPath, {
 		bun_pty_spawn: {
 			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
@@ -175,7 +176,7 @@ export class Terminal implements IPty {
 	) {
 		if (!lib) {
 			throw new Error(
-				`bun-pty could not load its native library at ${libPath}: ${
+				`bun-pty could not load its native library${libPath ? ` at ${libPath}` : ""}: ${
 					libLoadError instanceof Error ? libLoadError.message : String(libLoadError)
 				}`,
 			);
