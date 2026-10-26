@@ -111,13 +111,20 @@ function resolveLibPath(): string {
 	);
 }
 
-const libPath = resolveLibPath();
+let libPath: string | undefined;
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 let lib: any;
+// Kept so a failed load can be reported from spawn() with the real cause.
+let libLoadError: unknown;
 
-// try to load the lib, if it fails log the error
+// Load the native lib. We intentionally do not throw here: importing bun-pty
+// without spawning (a bundler that bundles it, code paths that never open a
+// terminal) must keep working. The failure is deferred to the constructor so it
+// surfaces as a clear error from spawn() instead of
+// "undefined is not an object (evaluating 'lib.symbols')" deep in a spawn.
 try {
+	libPath = resolveLibPath();
 	lib = dlopen(libPath, {
 		bun_pty_spawn: {
 			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
@@ -141,7 +148,8 @@ try {
 		bun_pty_close: { args: [FFIType.i32], returns: FFIType.void },
 	});
 } catch (error) {
-	console.error("Failed to load lib", error);
+	libLoadError = error;
+	console.error("Failed to load bun-pty native library", error);
 }
 
 export class Terminal implements IPty {
@@ -166,6 +174,13 @@ export class Terminal implements IPty {
 		args: string[] = [],
 		opts: IPtyForkOptions = {},
 	) {
+		if (!lib) {
+			throw new Error(
+				`bun-pty could not load its native library${libPath ? ` at ${libPath}` : ""}: ${
+					libLoadError instanceof Error ? libLoadError.message : String(libLoadError)
+				}`,
+			);
+		}
 		this._cols = opts.cols ?? DEFAULT_COLS;
 		this._rows = opts.rows ?? DEFAULT_ROWS;
 		const cwd = opts.cwd ?? process.cwd();
