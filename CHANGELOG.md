@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-10-26
+
+### Fixed
+- When the native library fails to load, `spawn()` now throws an error naming the library path and the real cause, instead of `undefined is not an object (evaluating 'lib.symbols')` (#51)
+  - Importing bun-pty no longer throws when no library file is found either; the error is reported from `spawn()`, and the load failure is still logged at import
+
 ## [0.5.1] - 2026-10-12
 
 ### Fixed
