@@ -11,6 +11,6 @@
     "typescript": "^7"
   },
   "dependencies": {
-    "bun-pty": "^0.4.7"
+    "bun-pty": "^0.6.0"
   }
 }
