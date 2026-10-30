@@ -108,6 +108,27 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(dataReceived).toContain("Hello before listener");
   });
 
+  test.skipIf(isWindows)("Terminal keeps the newest 512 KiB of UTF-8 before the first onData listener (Unix)", async () => {
+    // 600,000 bytes of "─" (3 bytes each), then an end marker
+    const terminal = new Terminal(process.execPath, [
+      "-e",
+      "process.stdout.write('─'.repeat(200000) + 'END')",
+    ]);
+    terminals.push(terminal);
+
+    await new Promise<void>((resolve) => {
+      terminal.onExit(() => resolve());
+    });
+
+    let dataReceived = "";
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    expect(Buffer.byteLength(dataReceived, "utf8")).toBeLessThanOrEqual(512 * 1024);
+    expect(dataReceived).toMatch(/^─+END$/);
+  });
+
   test.skipIf(isWindows)("Terminal can send data to a real process (Unix)", async () => {
     let dataReceived = "";
     let hasExited = false;

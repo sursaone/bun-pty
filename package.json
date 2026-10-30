@@ -48,10 +48,10 @@
 		"typecheck": "bun check src/*.test.ts",
 		"build": "bun run build:rust && bun run build:ts",
 		"test": "bun test",
-		"test:unit": "bun test src/interfaces.test.ts src/terminal.test.ts src/index.test.ts src/env.test.ts",
+		"test:unit": "bun test src/interfaces.test.ts src/terminal.test.ts src/index.test.ts src/env.test.ts src/output.test.ts",
 		"test:integration": "RUN_INTEGRATION_TESTS=true bun test src/terminal.integration.test.ts",
 		"test:all": "bun run test:unit && bun run test:integration",
-		"test:coverage": "bun test --coverage src/interfaces.test.ts src/terminal.test.ts src/index.test.ts src/env.test.ts",
+		"test:coverage": "bun test --coverage src/interfaces.test.ts src/terminal.test.ts src/index.test.ts src/env.test.ts src/output.test.ts",
 		"clean": "rm -rf ./dist && cd rust-pty && cargo clean"
 	},
 	"engines": {

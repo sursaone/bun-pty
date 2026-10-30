@@ -6,6 +6,7 @@ import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
 import { libraryFilenames, unsupportedBunError } from "./library";
 import { DEFAULT_NAME, childEnv, formatEnv } from "./env";
+import { INITIAL_OUTPUT_LIMIT_BYTES, keepNewestUtf8 } from "./output";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -13,8 +14,6 @@ export const DEFAULT_COLS = 80;
 export const DEFAULT_ROWS = 24;
 export const DEFAULT_FILE = "sh";
 export { DEFAULT_NAME };
-// Output kept for the first onData listener; older output is dropped past this
-const INITIAL_OUTPUT_BUFFER_LIMIT = 512 * 1024;
 
 /**
  * Quote a string for shell-words compatible splitting on the Rust side.
@@ -173,6 +172,7 @@ export class Terminal implements IPty {
 	private _closing = false;
 	private _hasDataListener = false;
 	private _initialOutput = "";
+	private _initialOutputBytes = 0;
 
 	// TextDecoder with streaming mode to properly handle UTF-8 across chunk boundaries
 	// Without this, multi-byte characters (like box-drawing ─) that span chunks become �
@@ -240,6 +240,7 @@ export class Terminal implements IPty {
 				this._hasDataListener = true;
 				const initialOutput = this._initialOutput;
 				this._initialOutput = "";
+				this._initialOutputBytes = 0;
 				if (initialOutput) listener(initialOutput);
 			}
 			return disposable;
@@ -253,7 +254,12 @@ export class Terminal implements IPty {
 		if (this._hasDataListener) {
 			this._onData.fire(data);
 		} else {
-			this._initialOutput = `${this._initialOutput}${data}`.slice(-INITIAL_OUTPUT_BUFFER_LIMIT);
+			this._initialOutput += data;
+			this._initialOutputBytes += Buffer.byteLength(data, "utf8");
+			if (this._initialOutputBytes > INITIAL_OUTPUT_LIMIT_BYTES) {
+				this._initialOutput = keepNewestUtf8(this._initialOutput, INITIAL_OUTPUT_LIMIT_BYTES);
+				this._initialOutputBytes = Buffer.byteLength(this._initialOutput, "utf8");
+			}
 		}
 	}
 
