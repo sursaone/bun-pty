@@ -1,10 +1,10 @@
 // terminal.ts  —  JS/TS front-end (final fixed version)
 
-import { dlopen, FFIType, ptr } from "bun:ffi";
+import { dlopen, FFIType } from "bun:ffi";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
-import { libraryFilenames } from "./library";
+import { libraryFilenames, unsupportedBunError } from "./library";
 import { DEFAULT_NAME, childEnv, formatEnv } from "./env";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
@@ -124,18 +124,26 @@ let libLoadError: unknown;
 // surfaces as a clear error from spawn() instead of
 // "undefined is not an object (evaluating 'lib.symbols')" deep in a spawn.
 try {
+	const versionError = unsupportedBunError(Bun.version);
+	if (versionError) throw new Error(versionError);
 	libPath = resolveLibPath();
 	lib = dlopen(libPath, {
+		// cstring args take JS strings directly (Bun 1.4+); the env block holds
+		// NUL separators, so it stays a Buffer.
 		bun_pty_spawn: {
 			args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.i32, FFIType.i32],
 			returns: FFIType.i32,
 		},
+		// "buffer" + "buffer_length" (Bun 1.4+) pass a view's pointer and byte
+		// length read from the same object, so the two can't disagree. Bun 1.4.4
+		// rejects the numeric FFIType.buffer/buffer_length values, so these use
+		// the string names.
 		bun_pty_write: {
-			args: [FFIType.i32, FFIType.pointer, FFIType.i32],
+			args: [FFIType.i32, "buffer", "buffer_length"],
 			returns: FFIType.i32,
 		},
 		bun_pty_read: {
-			args: [FFIType.i32, FFIType.pointer, FFIType.i32],
+			args: [FFIType.i32, "buffer", "buffer_length"],
 			returns: FFIType.i32,
 		},
 		bun_pty_resize: {
@@ -191,8 +199,8 @@ export class Terminal implements IPty {
 		const envStr = formatEnv(childEnv(opts, cwd));
 
 		this.handle = lib.symbols.bun_pty_spawn(
-			Buffer.from(`${cmdline}\0`, "utf8"),
-			Buffer.from(`${cwd}\0`, "utf8"),
+			cmdline,
+			cwd,
 			Buffer.from(`${envStr}\0`, "utf8"),
 			this._cols,
 			this._rows,
@@ -231,7 +239,7 @@ export class Terminal implements IPty {
 	write(data: string) {
 		if (this._closing) return;
 		const buf = Buffer.from(data, "utf8");
-		lib.symbols.bun_pty_write(this.handle, ptr(buf), buf.length);
+		lib.symbols.bun_pty_write(this.handle, buf, buf);
 	}
 
 	resize(cols: number, rows: number) {
@@ -258,7 +266,7 @@ export class Terminal implements IPty {
 		const buf = Buffer.allocUnsafe(4096);
 
 		while (this._readLoop && !this._closing) {
-			const n = lib.symbols.bun_pty_read(this.handle, ptr(buf), buf.length);
+			const n = lib.symbols.bun_pty_read(this.handle, buf, buf);
 			if (n > 0) {
 				// Use streaming mode to buffer incomplete UTF-8 sequences across chunks
 				// This prevents corruption when multi-byte chars span chunk boundaries

@@ -2,7 +2,7 @@
 
 [![NPM Version](https://img.shields.io/npm/v/bun-pty.svg)](https://www.npmjs.com/package/bun-pty)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Bun Compatible](https://img.shields.io/badge/Bun-%E2%89%A51.0.0-black)](https://bun.sh)
+[![Bun Compatible](https://img.shields.io/badge/Bun-%E2%89%A51.4.0-black)](https://bun.sh)
 
 A cross-platform pseudo-terminal (PTY) implementation for Bun, powered by Rust's portable-pty library and Bun's FFI capabilities.
 
@@ -23,7 +23,7 @@ bun add bun-pty
 
 ## ⚙️ Requirements
 
-- **Bun** 1.0.0 or higher
+- **Bun** 1.4.0 or higher (bun-pty uses the engine-native `bun:ffi` added in Bun 1.4)
 - **Rust** is only needed if you're building from source (the npm package includes pre-built binaries)
 
 ## 📋 Platform Support
@@ -33,6 +33,16 @@ bun add bun-pty
 | macOS    | ✅     | Fully supported |
 | Linux    | ✅     | Fully supported |
 | Windows  | ✅     | Fully supported |
+
+## 🆚 bun-pty or `Bun.Terminal`?
+
+Bun 1.4 has a built-in PTY, [`Bun.Terminal`](https://bun.com/docs/runtime/child-process#terminal-pty-support) (`Bun.spawn({ terminal })`). If you are writing new code and only need Bun's own API, try it first: it needs no native library.
+
+bun-pty is the better fit when you want:
+
+- **The node-pty API** - `spawn()`, `onData`, `onExit`, `resize()` and `kill()` with node-pty's types, so code written for node-pty (or xterm.js integrations built on it) runs on Bun unchanged
+- **node-pty's environment rules** - `env` is the child's whole environment, `TERM` comes from `name`, and `PWD` follows `cwd`
+- **The same backend on every platform** - one Rust ([portable-pty](https://crates.io/crates/portable-pty)) implementation on macOS, Linux (glibc and musl) and Windows (x64 and ARM64)
 
 ## 🚦 Usage
 

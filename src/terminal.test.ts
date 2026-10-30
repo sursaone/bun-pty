@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_FILE, DEFAULT_NAME } from "./terminal";
 import type { IPtyForkOptions, IExitEvent } from "./interfaces";
-import { libraryFilenames } from "./library";
+import { libraryFilenames, MIN_BUN_VERSION, unsupportedBunError } from "./library";
 
 describe("native library resolution", () => {
 	test("prefers the ARM64 DLL on Windows ARM64", () => {
@@ -16,6 +16,29 @@ describe("native library resolution", () => {
 
 	test("keeps the generic DLL name on Windows x64", () => {
 		expect(libraryFilenames("win32", "x64", false)).toEqual(["rust_pty.dll"]);
+	});
+});
+
+describe("Bun version check", () => {
+	test("accepts the minimum version and newer", () => {
+		expect(unsupportedBunError(MIN_BUN_VERSION)).toBeUndefined();
+		expect(unsupportedBunError("1.4.4")).toBeUndefined();
+		expect(unsupportedBunError("1.10.0")).toBeUndefined();
+		expect(unsupportedBunError("2.0.0")).toBeUndefined();
+	});
+
+	test("accepts canary builds by their release version", () => {
+		expect(unsupportedBunError("1.4.5-canary.20261030.1")).toBeUndefined();
+	});
+
+	test("rejects Bun 1.3 with a message naming both versions", () => {
+		const message = unsupportedBunError("1.3.14");
+		expect(message).toContain(MIN_BUN_VERSION);
+		expect(message).toContain("1.3.14");
+	});
+
+	test("the running Bun is supported", () => {
+		expect(unsupportedBunError(Bun.version)).toBeUndefined();
 	});
 });
 

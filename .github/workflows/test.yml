@@ -18,6 +18,11 @@ jobs:
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             zigbuild_target: x86_64-unknown-linux-gnu.2.17
+          # The oldest Bun that package.json "engines" allows
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            zigbuild_target: x86_64-unknown-linux-gnu.2.17
+            bun-version: 1.4.0
           - runner: macos-latest
             target: x86_64-apple-darwin
           - runner: macos-latest
@@ -29,12 +34,12 @@ jobs:
             rustflags: -C target-feature=+crt-static
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ matrix.bun-version || 'latest' }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -86,16 +91,16 @@ jobs:
 
       - name: Upload coverage to artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.runner }}-${{ matrix.target }}
+          name: coverage-${{ matrix.runner }}-${{ matrix.target }}-bun-${{ matrix.bun-version || 'latest' }}
           path: coverage/lcov.info
           if-no-files-found: ignore
 
   build-musl-lib:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -115,7 +120,7 @@ jobs:
         run: cd rust-pty && cargo zigbuild --release --target x86_64-unknown-linux-musl
 
       - name: Upload musl library
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: librust_pty_musl
           path: rust-pty/target/x86_64-unknown-linux-musl/release/librust_pty.so
@@ -124,15 +129,15 @@ jobs:
     needs: build-musl-lib
     runs-on: ubuntu-latest
     container:
-      image: alpine:3.23
+      image: alpine:3.24
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: apk add --no-cache bash curl libgcc libstdc++
 
       - name: Download musl library
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: librust_pty_musl
           path: rust-pty/target/release/

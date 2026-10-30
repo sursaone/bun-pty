@@ -2,7 +2,9 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "types": ["bun"],
+    "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -14,4 +16,4 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts", "node_modules"]
-} 
+}

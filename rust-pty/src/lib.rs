@@ -412,21 +412,22 @@ pub unsafe extern "C" fn bun_pty_spawn(
 pub unsafe extern "C" fn bun_pty_write(
     handle: c_int,
     data:   *const u8,
-    len:    c_int,
+    len:    usize,                         // bun:ffi "buffer_length" (u64)
 ) -> c_int {
-    if handle <= 0 || data.is_null() || len < 0 { return ERROR; }
-    with(handle as u32, |p| p.write(data, len as usize))
+    if handle <= 0 || data.is_null() { return ERROR; }
+    with(handle as u32, |p| p.write(data, len))
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bun_pty_read(
     handle: c_int,
     buf:    *mut u8,
-    len:    c_int,
+    len:    usize,                         // bun:ffi "buffer_length" (u64)
 ) -> c_int {
-    if handle <= 0 || buf.is_null() || len <= 0 { return ERROR; }
+    if handle <= 0 || buf.is_null() || len == 0 { return ERROR; }
     with(handle as u32, |pty| {
-        let max = len as usize;
+        // the byte count is returned as c_int
+        let max = len.min(c_int::MAX as usize);
 
         // 1) serve pending data first
         let mut pend = pty.pending.lock().unwrap();

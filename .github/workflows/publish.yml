@@ -53,7 +53,7 @@ jobs:
             rustflags: -C target-feature=+crt-static
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -93,14 +93,14 @@ jobs:
           [[ ${#src[@]} -gt 0 ]] || { echo "❌ no lib"; exit 1; }
           cp "${src[0]}" "out/${{ matrix.out }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: compiled-libs-${{ matrix.target }}
           path: out/*
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: out/*
           fail_on_unmatched_files: true
@@ -110,14 +110,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org/
 
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
@@ -125,7 +125,7 @@ jobs:
         run: bun install
 
       - name: Download all compiled libs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: downloaded-libs
 
