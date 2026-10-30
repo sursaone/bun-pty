@@ -88,6 +88,26 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(dataReceived).toContain("Hello from Bun PTY");
   });
 
+  test("Terminal keeps output emitted before the first onData listener", async () => {
+    const { cmd, args } = echoCommand("Hello before listener");
+    const terminal = new Terminal(cmd, args);
+    terminals.push(terminal);
+
+    const exited = new Promise<void>((resolve) => {
+      terminal.onExit(() => resolve());
+    });
+
+    // Subscribe only after the process has written its output and exited
+    await exited;
+
+    let dataReceived = "";
+    terminal.onData((data) => {
+      dataReceived += data;
+    });
+
+    expect(dataReceived).toContain("Hello before listener");
+  });
+
   test.skipIf(isWindows)("Terminal can send data to a real process (Unix)", async () => {
     let dataReceived = "";
     let hasExited = false;
