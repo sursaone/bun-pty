@@ -1,10 +1,11 @@
 import { expect, test, describe } from "bun:test";
+import { FFIType } from "bun:ffi";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_FILE, DEFAULT_NAME } from "./terminal";
 import type { IPtyForkOptions, IExitEvent } from "./interfaces";
-import { libraryFilenames } from "./library";
+import { libraryFilenames, MIN_BUN_VERSION, unsupportedBunError } from "./library";
 
 describe("native library resolution", () => {
 	test("prefers the ARM64 DLL on Windows ARM64", () => {
@@ -16,6 +17,31 @@ describe("native library resolution", () => {
 
 	test("keeps the generic DLL name on Windows x64", () => {
 		expect(libraryFilenames("win32", "x64", false)).toEqual(["rust_pty.dll"]);
+	});
+});
+
+describe("Bun version check", () => {
+	// FFIType as Bun 1.3 and Bun 1.4 define it, cut down to the keys that matter
+	const ffiTypes13 = { pointer: 12, cstring: 14, buffer: 20 };
+	const ffiTypes14 = { ...ffiTypes13, buffer_length: 21 };
+
+	test("accepts a Bun whose FFI has buffer_length", () => {
+		expect(unsupportedBunError("1.4.0", ffiTypes14)).toBeUndefined();
+		expect(unsupportedBunError("1.4.5-canary.20261030.1", ffiTypes14)).toBeUndefined();
+	});
+
+	test("rejects a Bun without buffer_length, naming both versions", () => {
+		const message = unsupportedBunError("1.3.14", ffiTypes13);
+		expect(message).toContain(MIN_BUN_VERSION);
+		expect(message).toContain("1.3.14");
+	});
+
+	test("rejects an early 1.4.0 canary that lacks buffer_length", () => {
+		expect(unsupportedBunError("1.4.0", ffiTypes13)).toContain(MIN_BUN_VERSION);
+	});
+
+	test("the running Bun is supported", () => {
+		expect(unsupportedBunError(Bun.version, FFIType)).toBeUndefined();
 	});
 });
 

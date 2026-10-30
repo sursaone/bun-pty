@@ -2,7 +2,7 @@
 
 [![NPM Version](https://img.shields.io/npm/v/bun-pty.svg)](https://www.npmjs.com/package/bun-pty)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Bun Compatible](https://img.shields.io/badge/Bun-%E2%89%A51.0.0-black)](https://bun.sh)
+[![Bun Compatible](https://img.shields.io/badge/Bun-%E2%89%A51.4.0-black)](https://bun.sh)
 
 A cross-platform pseudo-terminal (PTY) implementation for Bun, powered by Rust's portable-pty library and Bun's FFI capabilities.
 
@@ -23,7 +23,7 @@ bun add bun-pty
 
 ## ⚙️ Requirements
 
-- **Bun** 1.0.0 or higher
+- **Bun** 1.4.0 or higher (bun-pty uses the engine-native `bun:ffi` added in Bun 1.4)
 - **Rust** is only needed if you're building from source (the npm package includes pre-built binaries)
 
 ## 📋 Platform Support
@@ -33,6 +33,16 @@ bun add bun-pty
 | macOS    | ✅     | Fully supported |
 | Linux    | ✅     | Fully supported |
 | Windows  | ✅     | Fully supported |
+
+## 🆚 bun-pty or `Bun.Terminal`?
+
+Bun 1.4 has a built-in PTY, [`Bun.Terminal`](https://bun.com/docs/runtime/child-process#terminal-pty-support) (`Bun.spawn({ terminal })`). If you are writing new code and only need Bun's own API, try it first: it needs no native library.
+
+bun-pty is the better fit when you want:
+
+- **The core of the node-pty API** - `spawn()`, `write()`, `onData`, `onExit`, `resize()` and `kill()`, with node-pty's option and event shapes, so code that sticks to these ports with little or no change. Not supported: the `uid`, `gid`, `encoding`, `handleFlowControl` and `useConpty` options, and `pause()`, `resume()` and `clear()`
+- **node-pty's environment rules** - `env` is the child's whole environment, `TERM` comes from `name`, and `PWD` follows `cwd`
+- **The same backend on every platform** - one Rust ([portable-pty](https://crates.io/crates/portable-pty)) implementation on macOS, Linux (glibc and musl) and Windows (x64 and ARM64)
 
 ## 🚦 Usage
 
@@ -204,6 +214,9 @@ bun run test:integration
 
 # View test coverage
 bun run test:coverage
+
+# Type check the sources and tests (bun check, Bun 1.4.3+)
+bun run typecheck
 ```
 
 ## 🔧 Building from Source

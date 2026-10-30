@@ -49,6 +49,15 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     expect(terminal.pid).toBeGreaterThan(0);
   });
 
+  // Up to 0.5.2, ptr() on the empty buffer threw on Bun 1.4
+  test("Terminal write of an empty string is a no-op", () => {
+    const { cmd, args } = sleepCommand(1);
+    const terminal = new Terminal(cmd, args);
+    terminals.push(terminal);
+
+    expect(() => terminal.write("")).not.toThrow();
+  });
+
   test("Terminal can receive data from a real process", async () => {
     const { cmd, args } = echoCommand("Hello from Bun PTY");
     const terminal = new Terminal(cmd, args);
