@@ -214,6 +214,9 @@ bun run test:integration
 
 # View test coverage
 bun run test:coverage
+
+# Type check the sources and tests (bun check, Bun 1.4.3+)
+bun run typecheck
 ```
 
 ## 🔧 Building from Source

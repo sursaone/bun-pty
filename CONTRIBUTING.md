@@ -87,6 +87,9 @@ bun run test:integration
 
 # Run all tests
 bun run test:all
+
+# Type check the sources and tests
+bun run typecheck
 ```
 
 ## Project Structure
