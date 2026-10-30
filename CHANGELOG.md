@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-30
+
+### Changed
+- **Breaking:** bun-pty now requires Bun 1.4.0 or newer (#52)
+  - It uses the engine-native `bun:ffi` that arrived in Bun 1.4, which Bun reports as up to 3x faster per call
+  - On an older Bun, importing still works and `spawn()` throws "bun-pty needs Bun 1.4.0 or newer"; run `bun upgrade`
+- Reads and writes pass the buffer and its byte length as one view (`"buffer"` + `"buffer_length"`), so the two cannot disagree; the command line and `cwd` go to the native library as plain strings (#52)
+  - The `bun_pty_read` and `bun_pty_write` length argument is now `usize`; a custom library set with `BUN_PTY_LIB` must be built from this version
+- Library load failures now include the operating system's `dlerror()` message (Bun 1.4)
+
+### Fixed
+- `write("")` no longer throws `bun:ffi cannot convert argument to 'ptr'` on Bun 1.4 (#52)
+
+### Internal
+- Update `@types/bun` 1.4.4, `@types/node` 26.6.6 and TypeScript 7.0.2, and move `bun.lock` to version 2 (#52)
+- Update the Rust crates; `portable-pty` stays at 0.8.1 because of wezterm/wezterm#6783 (#52)
+- Update GitHub Actions to their current major versions, drop persisted checkout credentials in the publish workflow, test on Alpine 3.24 and on Bun 1.4.0, and add a `bun check` type check (`bun run typecheck`) (#52)
+
 ## [0.5.2] - 2026-10-26
 
 ### Fixed
