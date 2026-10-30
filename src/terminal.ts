@@ -124,7 +124,7 @@ let libLoadError: unknown;
 // surfaces as a clear error from spawn() instead of
 // "undefined is not an object (evaluating 'lib.symbols')" deep in a spawn.
 try {
-	const versionError = unsupportedBunError(Bun.version);
+	const versionError = unsupportedBunError(Bun.version, FFIType);
 	if (versionError) throw new Error(versionError);
 	libPath = resolveLibPath();
 	lib = dlopen(libPath, {

@@ -23,10 +23,9 @@ export function libraryFilenames(platform: typeof process.platform, arch: string
 // cstring args, both new in Bun 1.4.0.
 export const MIN_BUN_VERSION = "1.4.0";
 
-export function unsupportedBunError(version: string): string | undefined {
-	// Compare the release part only, so a canary build such as 1.4.5-canary.1
-	// counts as 1.4.5.
-	const release = version.split("-")[0];
-	if (Bun.semver.order(release, MIN_BUN_VERSION) >= 0) return undefined;
+// Checks for the FFI feature itself rather than comparing versions: an early
+// 1.4.0 canary lacks "buffer_length", and Bun 1.0.0-1.0.10 have no Bun.semver.
+export function unsupportedBunError(version: string, ffiTypes: object): string | undefined {
+	if ("buffer_length" in ffiTypes) return undefined;
 	return `bun-pty needs Bun ${MIN_BUN_VERSION} or newer, but this is Bun ${version}. Run \`bun upgrade\`.`;
 }

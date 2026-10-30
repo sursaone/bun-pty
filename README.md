@@ -40,7 +40,7 @@ Bun 1.4 has a built-in PTY, [`Bun.Terminal`](https://bun.com/docs/runtime/child-
 
 bun-pty is the better fit when you want:
 
-- **The node-pty API** - `spawn()`, `onData`, `onExit`, `resize()` and `kill()` with node-pty's types, so code written for node-pty (or xterm.js integrations built on it) runs on Bun unchanged
+- **The core of the node-pty API** - `spawn()`, `write()`, `onData`, `onExit`, `resize()` and `kill()`, with node-pty's option and event shapes, so code that sticks to these ports with little or no change. Not supported: the `uid`, `gid`, `encoding`, `handleFlowControl` and `useConpty` options, and `pause()`, `resume()` and `clear()`
 - **node-pty's environment rules** - `env` is the child's whole environment, `TERM` comes from `name`, and `PWD` follows `cwd`
 - **The same backend on every platform** - one Rust ([portable-pty](https://crates.io/crates/portable-pty)) implementation on macOS, Linux (glibc and musl) and Windows (x64 and ARM64)
 
