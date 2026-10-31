@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-10-31
+
+### Fixed
+- Output the child writes before the first `onData` listener subscribes is no longer lost (#53, #54)
+  - The newest 512 KiB of UTF-8 is kept, cut only between whole characters, and delivered to the first listener (and any added in the same tick) just after `onData()` returns
+  - Before, a consumer that awaited anything between `spawn()` and `onData()` lost the shell's first prompt, or all of a fast command's output
+  - A consumer that subscribes in the same tick as `spawn()` sees no change
+
 ## [0.6.0] - 2026-10-30
 
 ### Changed
