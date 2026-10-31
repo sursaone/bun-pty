@@ -105,14 +105,42 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
       dataReceived += data;
     });
 
+    // Delivered after onData() returns, not during it
+    expect(dataReceived).toBe("");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(dataReceived).toContain("Hello before listener");
   });
 
+  test("A first onData listener can dispose itself while it receives earlier output", async () => {
+    const { cmd, args } = echoCommand("Hello once");
+    const terminal = new Terminal(cmd, args);
+    terminals.push(terminal);
+
+    await new Promise<void>((resolve) => {
+      terminal.onExit(() => resolve());
+    });
+
+    let calls = 0;
+    let dataReceived = "";
+    expect(() => {
+      const subscription = terminal.onData((data) => {
+        calls++;
+        dataReceived += data;
+        subscription.dispose();
+      });
+    }).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(calls).toBe(1);
+    expect(dataReceived).toContain("Hello once");
+  });
+
   test.skipIf(isWindows)("Terminal keeps the newest 512 KiB of UTF-8 before the first onData listener (Unix)", async () => {
-    // 600,000 bytes of "─" (3 bytes each), then an end marker
+    // 1,200,000 bytes of "─" (3 bytes each), then an end marker: more than
+    // twice the limit, so it is trimmed while reading and again on delivery
     const terminal = new Terminal(process.execPath, [
       "-e",
-      "process.stdout.write('─'.repeat(200000) + 'END')",
+      "process.stdout.write('─'.repeat(400000) + 'END')",
     ]);
     terminals.push(terminal);
 
@@ -124,6 +152,7 @@ describe.skipIf(!runIntegrationTests)("Integration Tests", () => {
     terminal.onData((data) => {
       dataReceived += data;
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(Buffer.byteLength(dataReceived, "utf8")).toBeLessThanOrEqual(512 * 1024);
     expect(dataReceived).toMatch(/^─+END$/);
