@@ -175,7 +175,7 @@ interface IPty {
   readonly process: string;    // Process name
   
   // Events
-  onData: (listener: (data: string) => void) => IDisposable;  // The first listener also gets output from before it subscribed (up to 512 KiB)
+  onData: (listener: (data: string) => void) => IDisposable;  // The first listener (and any added in the same tick) also gets output from before it subscribed (up to 512 KiB), just after onData() returns
   onExit: (listener: (event: IExitEvent) => void) => IDisposable;
   
   // Methods

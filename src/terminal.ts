@@ -171,6 +171,7 @@ export class Terminal implements IPty {
 	private _readLoop = false;
 	private _closing = false;
 	private _hasDataListener = false;
+	private _initialOutputScheduled = false;
 	private _initialOutput = "";
 	private _initialOutputBytes = 0;
 
@@ -233,15 +234,14 @@ export class Terminal implements IPty {
 
 	get onData() {
 		// Output that arrives before anyone listens (a shell prompt, a fast
-		// command) is kept and handed to the first listener.
+		// command) is kept and handed to the first listener. It is delivered in
+		// a microtask, after onData() has returned, so a listener can dispose
+		// itself; output read in between is kept too, so order is preserved.
 		return (listener: (data: string) => void) => {
 			const disposable = this._onData.event(listener);
-			if (!this._hasDataListener) {
-				this._hasDataListener = true;
-				const initialOutput = this._initialOutput;
-				this._initialOutput = "";
-				this._initialOutputBytes = 0;
-				if (initialOutput) listener(initialOutput);
+			if (!this._initialOutputScheduled) {
+				this._initialOutputScheduled = true;
+				queueMicrotask(() => this._flushInitialOutput());
 			}
 			return disposable;
 		};
@@ -250,13 +250,25 @@ export class Terminal implements IPty {
 		return this._onExit.event;
 	}
 
+	private _flushInitialOutput() {
+		const initialOutput = this._initialOutputBytes > INITIAL_OUTPUT_LIMIT_BYTES
+			? keepNewestUtf8(this._initialOutput, INITIAL_OUTPUT_LIMIT_BYTES)
+			: this._initialOutput;
+		this._initialOutput = "";
+		this._initialOutputBytes = 0;
+		this._hasDataListener = true;
+		if (initialOutput) this._onData.fire(initialOutput);
+	}
+
 	private _emitData(data: string) {
 		if (this._hasDataListener) {
 			this._onData.fire(data);
 		} else {
 			this._initialOutput += data;
 			this._initialOutputBytes += Buffer.byteLength(data, "utf8");
-			if (this._initialOutputBytes > INITIAL_OUTPUT_LIMIT_BYTES) {
+			// Trim only once twice the limit is held, so a child that writes a lot
+			// before anyone listens doesn't re-encode 512 KiB on every read
+			if (this._initialOutputBytes > 2 * INITIAL_OUTPUT_LIMIT_BYTES) {
 				this._initialOutput = keepNewestUtf8(this._initialOutput, INITIAL_OUTPUT_LIMIT_BYTES);
 				this._initialOutputBytes = Buffer.byteLength(this._initialOutput, "utf8");
 			}
