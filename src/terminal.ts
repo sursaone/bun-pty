@@ -6,6 +6,7 @@ import { EventEmitter } from "./interfaces";
 import type { IPty, IPtyForkOptions, IExitEvent } from "./interfaces";
 import { libraryFilenames, unsupportedBunError } from "./library";
 import { DEFAULT_NAME, childEnv, formatEnv } from "./env";
+import { INITIAL_OUTPUT_LIMIT_BYTES, keepNewestUtf8 } from "./output";
 import { join, dirname, basename } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -169,6 +170,9 @@ export class Terminal implements IPty {
 
 	private _readLoop = false;
 	private _closing = false;
+	private _hasDataListener = false;
+	private _initialOutput = "";
+	private _initialOutputBytes = 0;
 
 	// TextDecoder with streaming mode to properly handle UTF-8 across chunk boundaries
 	// Without this, multi-byte characters (like box-drawing ─) that span chunks become �
@@ -228,10 +232,35 @@ export class Terminal implements IPty {
 	}
 
 	get onData() {
-		return this._onData.event;
+		// Output that arrives before anyone listens (a shell prompt, a fast
+		// command) is kept and handed to the first listener.
+		return (listener: (data: string) => void) => {
+			const disposable = this._onData.event(listener);
+			if (!this._hasDataListener) {
+				this._hasDataListener = true;
+				const initialOutput = this._initialOutput;
+				this._initialOutput = "";
+				this._initialOutputBytes = 0;
+				if (initialOutput) listener(initialOutput);
+			}
+			return disposable;
+		};
 	}
 	get onExit() {
 		return this._onExit.event;
+	}
+
+	private _emitData(data: string) {
+		if (this._hasDataListener) {
+			this._onData.fire(data);
+		} else {
+			this._initialOutput += data;
+			this._initialOutputBytes += Buffer.byteLength(data, "utf8");
+			if (this._initialOutputBytes > INITIAL_OUTPUT_LIMIT_BYTES) {
+				this._initialOutput = keepNewestUtf8(this._initialOutput, INITIAL_OUTPUT_LIMIT_BYTES);
+				this._initialOutputBytes = Buffer.byteLength(this._initialOutput, "utf8");
+			}
+		}
 	}
 
 	/* ------------- IO methods ------------- */
@@ -272,13 +301,13 @@ export class Terminal implements IPty {
 				// This prevents corruption when multi-byte chars span chunk boundaries
 				const decoded = this._decoder.decode(buf.subarray(0, n), { stream: true });
 				if (decoded) {
-					this._onData.fire(decoded);
+					this._emitData(decoded);
 				}
 			} else if (n === -2) {
 				// CHILD_EXITED - flush any remaining bytes in the decoder
 				const remaining = this._decoder.decode();
 				if (remaining) {
-					this._onData.fire(remaining);
+					this._emitData(remaining);
 				}
 				const exitCode = lib.symbols.bun_pty_get_exit_code(this.handle);
 				this._onExit.fire({ exitCode });
@@ -287,7 +316,7 @@ export class Terminal implements IPty {
 				// error - flush decoder before breaking
 				const remaining = this._decoder.decode();
 				if (remaining) {
-					this._onData.fire(remaining);
+					this._emitData(remaining);
 				}
 				break;
 			} else {
